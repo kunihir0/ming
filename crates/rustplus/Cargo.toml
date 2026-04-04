@@ -1,0 +1,17 @@
+[package]
+name = "rustplus"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio.workspace = true
+tokio-tungstenite.workspace = true
+futures-util.workspace = true
+prost.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+image = "0.25.10"
+
+[build-dependencies]
+prost-build = "0.14.3"
+protoc-bin-vendored = "3.0"

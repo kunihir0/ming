@@ -25,5 +25,5 @@ futures-util.workspace = true
 sha2.workspace = true
 
 [build-dependencies]
-prost-build = "0.13"
+prost-build = "0.14.3"
 protoc-bin-vendored = "3.0"
