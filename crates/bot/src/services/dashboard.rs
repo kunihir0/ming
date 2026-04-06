@@ -1,10 +1,10 @@
 #![allow(clippy::pedantic)]
 #![allow(clippy::items_after_statements)]
 
-use crate::db::models::{GuildConfig, PairedServer};
-use crate::db::models::ServerChannel as DbServerChannel;
-use crate::db::schema::server_channels::dsl::server_channels;
 use crate::db::DbPool;
+use crate::db::models::ServerChannel as DbServerChannel;
+use crate::db::models::{GuildConfig, PairedServer};
+use crate::db::schema::server_channels::dsl::server_channels;
 use diesel::prelude::*;
 use poise::serenity_prelude as serenity;
 use tracing::{error, info};
@@ -20,9 +20,9 @@ pub async fn handle_new_paired_server(
     server: &PairedServer,
 ) -> anyhow::Result<()> {
     use crate::db::schema::guild_configs::dsl::guild_configs;
-    
+
     let mut conn = db_pool.get()?;
-    
+
     let config: GuildConfig = if let Ok(c) = guild_configs.find(guild_id_str).first(&mut conn) {
         c
     } else {
@@ -35,13 +35,16 @@ pub async fn handle_new_paired_server(
 
     let (category_id, dashboard_id, chat_id, alerts_id) = if config.setup_mode == "Auto" {
         info!("Auto-creating channels for server: {}", server.name);
-        
+
         let category_name = format!("Rust - {}", server.name);
-        
+
         let category = guild_id
-            .create_channel(&ctx.http, serenity::CreateChannel::new(category_name).kind(serenity::ChannelType::Category))
+            .create_channel(
+                &ctx.http,
+                serenity::CreateChannel::new(category_name).kind(serenity::ChannelType::Category),
+            )
             .await?;
-            
+
         let dashboard_channel = guild_id
             .create_channel(
                 &ctx.http,
@@ -50,7 +53,7 @@ pub async fn handle_new_paired_server(
                     .category(category.id),
             )
             .await?;
-            
+
         let chat_channel = guild_id
             .create_channel(
                 &ctx.http,
@@ -59,7 +62,7 @@ pub async fn handle_new_paired_server(
                     .category(category.id),
             )
             .await?;
-            
+
         let alerts_channel = guild_id
             .create_channel(
                 &ctx.http,
@@ -68,12 +71,12 @@ pub async fn handle_new_paired_server(
                     .category(category.id),
             )
             .await?;
-            
+
         (
             Some(category.id.get().to_string()),
             Some(dashboard_channel.id.get().to_string()),
             Some(chat_channel.id.get().to_string()),
-            Some(alerts_channel.id.get().to_string())
+            Some(alerts_channel.id.get().to_string()),
         )
     } else {
         info!("Using manual channels for server: {}", server.name);
@@ -81,12 +84,15 @@ pub async fn handle_new_paired_server(
             None,
             config.manual_dashboard_channel_id.clone(),
             config.manual_chat_channel_id.clone(),
-            config.manual_alerts_channel_id.clone()
+            config.manual_alerts_channel_id.clone(),
         )
     };
 
     let Some(dash_id_str) = &dashboard_id else {
-        error!("No dashboard channel ID resolved for server {}", server.name);
+        error!(
+            "No dashboard channel ID resolved for server {}",
+            server.name
+        );
         return Err(anyhow::anyhow!("Missing dashboard channel"));
     };
 
@@ -99,12 +105,15 @@ pub async fn handle_new_paired_server(
         .description("Status: 🔴 **Offline**\n*Click Connect to start the Rust+ bridge.*")
         .field("Server IP", &server.server_ip, true)
         .field("Port", server.server_port.to_string(), true)
-        .footer(serenity::CreateEmbedFooter::new(format!("client.connect {}:{}", server.server_ip, server.server_port)));
+        .footer(serenity::CreateEmbedFooter::new(format!(
+            "client.connect {}:{}",
+            server.server_ip, server.server_port
+        )));
 
     let connect_btn = serenity::CreateButton::new(format!("connect_{}", server.id))
         .label("Connect")
         .style(serenity::ButtonStyle::Success);
-        
+
     let disconnect_btn = serenity::CreateButton::new(format!("disconnect_{}", server.id))
         .label("Disconnect")
         .style(serenity::ButtonStyle::Danger);
@@ -116,7 +125,7 @@ pub async fn handle_new_paired_server(
             &ctx.http,
             serenity::CreateMessage::new()
                 .embed(embed)
-                .components(vec![components])
+                .components(vec![components]),
         )
         .await?;
 

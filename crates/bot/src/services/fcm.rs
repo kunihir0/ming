@@ -1,16 +1,16 @@
-use crate::db::models::{FcmCredential, NewPairedServer, PairedServer};
 use crate::db::DbPool;
+use crate::db::models::{FcmCredential, NewPairedServer, PairedServer};
+use crate::db::schema::fcm_credentials::dsl::fcm_credentials;
+use crate::db::schema::paired_servers::dsl::paired_servers;
 use diesel::prelude::*;
 use poise::serenity_prelude as serenity;
 use push_receiver::PushReceiver;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tracing::{error, info, warn};
-use serde_json::Value;
-use crate::db::schema::fcm_credentials::dsl::fcm_credentials;
-use crate::db::schema::paired_servers::dsl::paired_servers;
 
 /// Boots up existing FCM receivers on bot startup
 ///
@@ -29,7 +29,7 @@ pub async fn boot_existing_receivers<S: std::hash::BuildHasher>(
         let handle = start_listener(cred.clone(), db_pool.clone(), ctx.clone());
         lock.insert(cred.id, handle);
     }
-    
+
     info!("Booted existing FCM receivers");
     Ok(())
 }
@@ -44,7 +44,7 @@ pub fn start_listener(
         // FCM connect requires sending sender_id (Steam ID usually, or hardcoded project ID)
         // Using Steam ID for authorized_entity.
         info!("Starting FCM listener for credential ID {}", cred.id);
-        
+
         // The user provided their own Android ID and Security Token via the slash command,
         // so we don't need to re-register with Google (which is failing with 404 anyway).
         // We just start the MCS socket listener directly.
@@ -54,11 +54,14 @@ pub fn start_listener(
         let connection_res = PushReceiver::builder(&cred.steam_id)
             .listen(android_id, security_token)
             .await;
-        
+
         let (_receiver, mut notification_stream) = match connection_res {
             Ok(res) => res,
             Err(e) => {
-                error!("Failed to connect PushReceiver for cred ID {}: {:?}", cred.id, e);
+                error!(
+                    "Failed to connect PushReceiver for cred ID {}: {:?}",
+                    cred.id, e
+                );
                 return;
             }
         };
@@ -68,19 +71,23 @@ pub fn start_listener(
         while let Some(notif) = notification_stream.recv().await {
             handle_fcm_message(&notif, &cred, &db_pool, &ctx);
         }
-        
+
         warn!("FCM listener stream ended for credential ID {}", cred.id);
     })
 }
 
 #[allow(clippy::collapsible_if)]
+#[allow(clippy::too_many_lines)]
 fn handle_fcm_message(
     payload: &push_receiver::Notification,
     cred: &FcmCredential,
     db_pool: &DbPool,
     ctx: &serenity::Context,
 ) {
-    info!("Received FCM payload with {} app_data items", payload.app_data.len());
+    info!(
+        "Received FCM payload with {} app_data items",
+        payload.app_data.len()
+    );
 
     let app_data = &payload.app_data;
 
@@ -107,23 +114,29 @@ fn handle_fcm_message(
         if body.get("type").and_then(Value::as_str) == Some("server") {
             let ip = body.get("ip").and_then(Value::as_str).unwrap_or("");
             // Rust+ appPort is sometimes string, sometimes number depending on the JSON
-            let port = body.get("port").and_then(|v| {
-                if let Some(s) = v.as_str() {
-                    s.parse::<i32>().ok()
-                } else {
-                    #[allow(clippy::cast_possible_truncation)]
-                    v.as_i64().map(|n| n as i32)
-                }
-            }).unwrap_or(0);
-            let token = body.get("playerToken").and_then(|v| {
-                if let Some(s) = v.as_str() {
-                    s.parse::<i32>().ok()
-                } else {
-                    #[allow(clippy::cast_possible_truncation)]
-                    v.as_i64().map(|n| n as i32)
-                }
-            }).unwrap_or(0);
-            
+            let port = body
+                .get("port")
+                .and_then(|v| {
+                    if let Some(s) = v.as_str() {
+                        s.parse::<i32>().ok()
+                    } else {
+                        #[allow(clippy::cast_possible_truncation)]
+                        v.as_i64().map(|n| n as i32)
+                    }
+                })
+                .unwrap_or(0);
+            let token = body
+                .get("playerToken")
+                .and_then(|v| {
+                    if let Some(s) = v.as_str() {
+                        s.parse::<i32>().ok()
+                    } else {
+                        #[allow(clippy::cast_possible_truncation)]
+                        v.as_i64().map(|n| n as i32)
+                    }
+                })
+                .unwrap_or(0);
+
             // Name is typically extracted from the title of the pairing notification, or desc.
             // Let's check title first.
             let title = app_data
@@ -172,8 +185,13 @@ fn handle_fcm_message(
             // Get the inserted server to pass to the dashboard handler
             let inserted_server = match paired_servers
                 .filter(crate::db::schema::paired_servers::dsl::server_ip.eq(&new_server.server_ip))
-                .filter(crate::db::schema::paired_servers::dsl::server_port.eq(&new_server.server_port))
-                .filter(crate::db::schema::paired_servers::dsl::player_token.eq(&new_server.player_token))
+                .filter(
+                    crate::db::schema::paired_servers::dsl::server_port.eq(&new_server.server_port),
+                )
+                .filter(
+                    crate::db::schema::paired_servers::dsl::player_token
+                        .eq(&new_server.player_token),
+                )
                 .first::<PairedServer>(&mut conn)
             {
                 Ok(s) => s,
@@ -189,7 +207,14 @@ fn handle_fcm_message(
                 let ctx = ctx.clone();
                 let guild_id = cred.guild_id.clone();
                 async move {
-                    if let Err(e) = crate::services::dashboard::handle_new_paired_server(&db_pool, &ctx, &guild_id, &inserted_server).await {
+                    if let Err(e) = crate::services::dashboard::handle_new_paired_server(
+                        &db_pool,
+                        &ctx,
+                        &guild_id,
+                        &inserted_server,
+                    )
+                    .await
+                    {
                         error!("Failed to setup dashboard for new server: {e}");
                     }
                 }

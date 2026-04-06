@@ -1,8 +1,8 @@
 #![allow(clippy::module_name_repetitions)]
 
-pub mod error;
-pub mod client;
 pub mod camera;
+pub mod client;
+pub mod error;
 pub(crate) mod ratelimit;
 
 pub mod proto {
@@ -12,5 +12,5 @@ pub mod proto {
     include!(concat!(env!("OUT_DIR"), "/rustplus.rs"));
 }
 
-pub use error::{Error, Result};
 pub use client::RustPlusClient;
+pub use error::{Error, Result};

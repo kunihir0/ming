@@ -17,7 +17,7 @@ pub enum Error {
 
     #[error("Request timeout")]
     Timeout,
-    
+
     #[error("Connection closed")]
     Disconnected,
 }

@@ -1,8 +1,8 @@
-use crate::{Context, Error};
 use crate::db::models::GuildConfig;
-use poise::serenity_prelude as serenity;
-use diesel::prelude::*;
 use crate::db::schema::guild_configs::dsl::{guild_configs, guild_id as gc_guild_id};
+use crate::{Context, Error};
+use diesel::prelude::*;
+use poise::serenity_prelude as serenity;
 
 #[derive(Debug, poise::ChoiceParameter)]
 pub enum SetupModeChoice {
@@ -17,7 +17,9 @@ pub enum SetupModeChoice {
 pub async fn setup(
     ctx: Context<'_>,
     #[description = "Setup mode"] mode: SetupModeChoice,
-    #[description = "Dashboard Channel (Manual mode only)"] dashboard_channel: Option<serenity::Channel>,
+    #[description = "Dashboard Channel (Manual mode only)"] dashboard_channel: Option<
+        serenity::Channel,
+    >,
     #[description = "Chat Channel (Manual mode only)"] chat_channel: Option<serenity::Channel>,
     #[description = "Alerts Channel (Manual mode only)"] alerts_channel: Option<serenity::Channel>,
 ) -> Result<(), Error> {
@@ -43,10 +45,12 @@ pub async fn setup(
                 .set(&config)
                 .execute(&mut conn)?;
 
-            ctx.say("Setup complete! Mode set to Auto-Create Categories.").await?;
+            ctx.say("Setup complete! Mode set to Auto-Create Categories.")
+                .await?;
         }
         SetupModeChoice::Manual => {
-            let dashboard = dashboard_channel.ok_or("Dashboard channel is required for manual mode")?;
+            let dashboard =
+                dashboard_channel.ok_or("Dashboard channel is required for manual mode")?;
             let chat = chat_channel.ok_or("Chat channel is required for manual mode")?;
             let alerts = alerts_channel.ok_or("Alerts channel is required for manual mode")?;
 
@@ -66,7 +70,8 @@ pub async fn setup(
                 .set(&config)
                 .execute(&mut conn)?;
 
-            ctx.say("Setup complete! Mode set to Manual with the provided channels.").await?;
+            ctx.say("Setup complete! Mode set to Manual with the provided channels.")
+                .await?;
         }
     }
 

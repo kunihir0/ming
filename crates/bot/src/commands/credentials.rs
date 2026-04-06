@@ -4,7 +4,11 @@ use diesel::prelude::*;
 
 /// Manage FCM credentials
 #[allow(clippy::unused_async)]
-#[poise::command(slash_command, subcommands("add"), required_permissions = "ADMINISTRATOR")]
+#[poise::command(
+    slash_command,
+    subcommands("add"),
+    required_permissions = "ADMINISTRATOR"
+)]
 pub async fn credentials(_ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
@@ -35,15 +39,16 @@ pub async fn add(
     let mut conn = ctx.data().db_pool.get()?;
 
     // Check if guild_configs exists first
-    use crate::db::schema::guild_configs::dsl::guild_configs;
     use crate::db::models::GuildConfig;
+    use crate::db::schema::guild_configs::dsl::guild_configs;
     let config_exists = guild_configs
         .find(&guild_id)
         .first::<GuildConfig>(&mut conn)
         .is_ok();
 
     if !config_exists {
-        ctx.say("You must run `/setup` first before adding credentials!").await?;
+        ctx.say("You must run `/setup` first before adding credentials!")
+            .await?;
         return Ok(());
     }
 
@@ -63,7 +68,11 @@ pub async fn add(
         ctx.data().db_pool.clone(),
         ctx.serenity_context().clone(),
     );
-    ctx.data().push_receivers.lock().await.insert(cred.id, handle);
+    ctx.data()
+        .push_receivers
+        .lock()
+        .await
+        .insert(cred.id, handle);
 
     ctx.say("Credentials added successfully!").await?;
 

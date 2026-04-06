@@ -9,8 +9,8 @@ use futures_util::{SinkExt, StreamExt};
 use prost::Message;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{broadcast, mpsc, oneshot, Mutex};
-use tokio::time::{timeout, Duration};
+use tokio::sync::{Mutex, broadcast, mpsc, oneshot};
+use tokio::time::{Duration, timeout};
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message as WsMessage};
 use tracing::{debug, error, warn};
 
@@ -111,28 +111,26 @@ impl RustPlusClient {
         tokio::spawn(async move {
             while let Some(msg) = read.next().await {
                 match msg {
-                    Ok(WsMessage::Binary(data)) => {
-                        match AppMessage::decode(data.as_ref()) {
-                            Ok(app_message) => {
-                                let mut handled = false;
-                                if let Some(response) = &app_message.response {
-                                    let seq = response.seq;
-                                    let mut reqs = read_requests.lock().await;
-                                    if let Some(callback) = reqs.remove(&seq) {
-                                        let _ = callback.send(app_message.clone());
-                                        handled = true;
-                                    }
-                                }
-
-                                if !handled {
-                                    let _ = broadcast_tx.send(app_message);
+                    Ok(WsMessage::Binary(data)) => match AppMessage::decode(data.as_ref()) {
+                        Ok(app_message) => {
+                            let mut handled = false;
+                            if let Some(response) = &app_message.response {
+                                let seq = response.seq;
+                                let mut reqs = read_requests.lock().await;
+                                if let Some(callback) = reqs.remove(&seq) {
+                                    let _ = callback.send(app_message.clone());
+                                    handled = true;
                                 }
                             }
-                            Err(e) => {
-                                warn!("Failed to decode AppMessage: {}", e);
+
+                            if !handled {
+                                let _ = broadcast_tx.send(app_message);
                             }
                         }
-                    }
+                        Err(e) => {
+                            warn!("Failed to decode AppMessage: {}", e);
+                        }
+                    },
                     Ok(WsMessage::Close(_)) => {
                         debug!("WebSocket closed");
                         break;
@@ -179,7 +177,9 @@ impl RustPlusClient {
     /// Takes the broadcast receiver from the client, allowing the consumer to listen for broadcasts.
     #[must_use]
     pub fn take_broadcast_receiver(&self) -> Option<broadcast::Receiver<AppMessage>> {
-        self.broadcast_tx.as_ref().map(tokio::sync::broadcast::Sender::subscribe)
+        self.broadcast_tx
+            .as_ref()
+            .map(tokio::sync::broadcast::Sender::subscribe)
     }
 
     async fn send_request_inner(&self, mut request: AppRequest) -> Result<AppMessage> {
@@ -380,7 +380,10 @@ impl RustPlusClient {
         self.send_request_inner(AppRequest {
             camera_input: Some(AppCameraInput {
                 buttons,
-                mouse_delta: Vector2 { x: Some(x), y: Some(y) },
+                mouse_delta: Vector2 {
+                    x: Some(x),
+                    y: Some(y),
+                },
             }),
             ..Default::default()
         })

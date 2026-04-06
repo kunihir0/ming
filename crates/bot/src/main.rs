@@ -6,7 +6,7 @@ pub mod services;
 
 use anyhow::Context as _;
 use db::DbPool;
-use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
 use poise::serenity_prelude as serenity;
 use std::env;
 use std::sync::Arc;
@@ -31,12 +31,15 @@ async fn main() -> anyhow::Result<()> {
 
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite://db.sqlite".to_string());
+    let database_url =
+        env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite://db.sqlite".to_string());
     let db_pool = db::establish_connection_pool(&database_url);
 
     // Run migrations
     {
-        let mut conn = db_pool.get().context("Failed to get DB connection from pool")?;
+        let mut conn = db_pool
+            .get()
+            .context("Failed to get DB connection from pool")?;
         conn.run_pending_migrations(MIGRATIONS)
             .map_err(|e| anyhow::anyhow!("Failed to run migrations: {e}"))?;
         info!("Database migrations applied.");
@@ -50,15 +53,39 @@ async fn main() -> anyhow::Result<()> {
     #[allow(clippy::collapsible_if)]
     let framework = poise::Framework::<Data, Error>::builder()
         .options(poise::FrameworkOptions {
-            commands: vec![commands::setup::setup(), commands::credentials::credentials()],
+            commands: vec![
+                commands::setup::setup(),
+                commands::credentials::credentials(),
+            ],
             event_handler: |ctx, event, _framework, data| {
                 Box::pin(async move {
-                    if let serenity::FullEvent::InteractionCreate { interaction } = event {
-                        if let Some(component_interaction) = interaction.as_message_component() {
-                            if let Err(e) = services::rustplus_client::handle_interaction(ctx, component_interaction, data).await {
-                                tracing::error!("Error handling interaction: {e}");
+                    match event {
+                        serenity::FullEvent::InteractionCreate { interaction } => {
+                            if let Some(component_interaction) = interaction.as_message_component()
+                            {
+                                if let Err(e) = services::rustplus_client::handle_interaction(
+                                    ctx,
+                                    component_interaction,
+                                    data,
+                                )
+                                .await
+                                {
+                                    tracing::error!("Error handling interaction: {e}");
+                                }
                             }
                         }
+                        serenity::FullEvent::Message { new_message } => {
+                            if let Err(e) = services::rustplus_client::handle_discord_message(
+                                ctx,
+                                new_message,
+                                data,
+                            )
+                            .await
+                            {
+                                tracing::error!("Error handling discord message: {e}");
+                            }
+                        }
+                        _ => {}
                     }
                     Ok(())
                 })
@@ -76,7 +103,12 @@ async fn main() -> anyhow::Result<()> {
                     rustplus_clients: Arc::new(Mutex::new(std::collections::HashMap::new())),
                 };
 
-                services::fcm::boot_existing_receivers(&data.db_pool, ctx.clone(), data.push_receivers.clone()).await?;
+                services::fcm::boot_existing_receivers(
+                    &data.db_pool,
+                    ctx.clone(),
+                    data.push_receivers.clone(),
+                )
+                .await?;
 
                 Ok(data)
             })

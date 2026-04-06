@@ -1,5 +1,5 @@
-use diesel::prelude::*;
 use crate::db::schema::{fcm_credentials, guild_configs, paired_servers, server_channels};
+use diesel::prelude::*;
 
 #[derive(Queryable, Selectable, Insertable, Identifiable, AsChangeset, Debug, Clone)]
 #[diesel(table_name = guild_configs)]
@@ -59,7 +59,9 @@ pub struct NewPairedServer {
     pub name: String,
 }
 
-#[derive(Queryable, Selectable, Insertable, Identifiable, AsChangeset, Associations, Debug, Clone)]
+#[derive(
+    Queryable, Selectable, Insertable, Identifiable, AsChangeset, Associations, Debug, Clone,
+)]
 #[diesel(belongs_to(PairedServer, foreign_key = server_id))]
 #[diesel(primary_key(server_id))]
 #[diesel(table_name = server_channels)]

@@ -1,7 +1,7 @@
 use crate::decrypt::decrypt;
 use crate::error::Result;
 use crate::proto::AppData;
-use crate::register::{register, FcmRegistration};
+use crate::register::{FcmRegistration, register};
 use reqwest::Client;
 use tokio::sync::mpsc;
 
@@ -66,7 +66,14 @@ impl PushReceiverBuilder {
         tokio::spawn(async move {
             let mut retry_count = 0;
             loop {
-                if let Err(e) = crate::mcs::connect(android_id, security_token, mcs_persistent_ids.clone(), tx.clone()).await {
+                if let Err(e) = crate::mcs::connect(
+                    android_id,
+                    security_token,
+                    mcs_persistent_ids.clone(),
+                    tx.clone(),
+                )
+                .await
+                {
                     tracing::error!("MCS connection failed: {e}");
                 }
 
@@ -149,7 +156,7 @@ impl PushReceiverBuilder {
     /// Listens for push notifications using existing FCM credentials without re-registering.
     ///
     /// This skips the checkin and registration phases and directly opens the MCS connection.
-    /// Note: Encrypted payloads (which require the ECDH keys generated during registration) 
+    /// Note: Encrypted payloads (which require the ECDH keys generated during registration)
     /// cannot be decrypted using this method and will be yielded as raw encrypted bytes.
     ///
     /// # Errors
@@ -166,11 +173,18 @@ impl PushReceiverBuilder {
 
         let persistent_ids = std::sync::Arc::new(tokio::sync::Mutex::new(self.persistent_ids));
         let mcs_persistent_ids = persistent_ids.clone();
-        
+
         tokio::spawn(async move {
             let mut retry_count = 0;
             loop {
-                if let Err(e) = crate::mcs::connect(android_id, security_token, mcs_persistent_ids.clone(), tx.clone()).await {
+                if let Err(e) = crate::mcs::connect(
+                    android_id,
+                    security_token,
+                    mcs_persistent_ids.clone(),
+                    tx.clone(),
+                )
+                .await
+                {
                     tracing::error!("MCS connection failed: {e}");
                 }
 
@@ -249,4 +263,3 @@ impl PushReceiver {
         &self.sender_id
     }
 }
-

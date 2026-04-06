@@ -7,9 +7,9 @@ use crate::error::Result;
 use crate::proto::{AppCameraInfo, AppCameraRays};
 use image::{Rgb, RgbImage};
 use std::sync::Arc;
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::{Mutex, broadcast};
 use tokio::task::JoinHandle;
-use tokio::time::{interval, Duration};
+use tokio::time::{Duration, interval};
 use tracing::warn;
 
 pub const BUTTON_NONE: i32 = 0;
@@ -81,14 +81,14 @@ impl IndexGenerator {
 pub struct Camera {
     client: RustPlusClient,
     identifier: String,
-    
+
     // Internal state
     state: Arc<Mutex<CameraState>>,
-    
+
     // Background task handles
     listen_task: Option<JoinHandle<()>>,
     resubscribe_task: Option<JoinHandle<()>>,
-    
+
     // Channel for emitting rendered PNG frames
     frame_tx: broadcast::Sender<Vec<u8>>,
 }
@@ -104,7 +104,7 @@ impl Camera {
     #[must_use]
     pub fn new(client: RustPlusClient, identifier: impl Into<String>) -> Self {
         let (frame_tx, _) = broadcast::channel(10);
-        
+
         Self {
             client,
             identifier: identifier.into(),
@@ -138,7 +138,7 @@ impl Camera {
             if let Some(mut rx) = self.client.take_broadcast_receiver() {
                 let state_clone = Arc::clone(&self.state);
                 let tx_clone = self.frame_tx.clone();
-                
+
                 self.listen_task = Some(tokio::spawn(async move {
                     while let Ok(msg) = rx.recv().await {
                         if let Some(broadcast) = msg.broadcast {
@@ -149,23 +149,25 @@ impl Camera {
                                 }
 
                                 s.camera_rays.push(rays);
-                                
+
                                 // Render when we have enough rays
                                 if s.camera_rays.len() > 10 {
                                     s.camera_rays.remove(0);
-                                    
+
                                     if let Some(info) = &s.subscribe_info {
                                         let width = info.width as u32;
                                         let height = info.height as u32;
                                         let frames_clone = s.camera_rays.clone();
-                                        
+
                                         // Release lock before heavy rendering
                                         drop(s);
-                                        
+
                                         // Render in blocking task
                                         let tx_inner = tx_clone.clone();
                                         tokio::task::spawn_blocking(move || {
-                                            if let Ok(png_bytes) = render_camera_frame(&frames_clone, width, height) {
+                                            if let Ok(png_bytes) =
+                                                render_camera_frame(&frames_clone, width, height)
+                                            {
                                                 let _ = tx_inner.send(png_bytes);
                                             }
                                         });
@@ -183,7 +185,7 @@ impl Camera {
             let state_clone = Arc::clone(&self.state);
             let client_clone = self.client.clone();
             let identifier = self.identifier.clone();
-            
+
             self.resubscribe_task = Some(tokio::spawn(async move {
                 let mut ticker = interval(Duration::from_secs(10));
                 loop {
@@ -236,7 +238,10 @@ impl Camera {
 
     /// Sends camera movement input.
     pub async fn move_camera(&self, buttons: i32, x: f32, y: f32) -> Result<()> {
-        self.client.send_camera_input(buttons, x, y).await.map(|_| ())
+        self.client
+            .send_camera_input(buttons, x, y)
+            .await
+            .map(|_| ())
     }
 
     /// Zooms a PTZ camera by 1 level.
@@ -272,9 +277,13 @@ impl Camera {
 }
 
 /// Renders the compiled camera frames into a PNG image.
-fn render_camera_frame(frames: &[AppCameraRays], width: u32, height: u32) -> std::result::Result<Vec<u8>, image::ImageError> {
+fn render_camera_frame(
+    frames: &[AppCameraRays],
+    width: u32,
+    height: u32,
+) -> std::result::Result<Vec<u8>, image::ImageError> {
     let mut sample_pos = vec![0u16; (width * height * 2) as usize];
-    
+
     let mut w = 0;
     for _h in 0..height {
         for g in 0..width {
@@ -288,12 +297,12 @@ fn render_camera_frame(frames: &[AppCameraRays], width: u32, height: u32) -> std
     for r in (1..=(width * height - 1)).rev() {
         let c = (2 * r) as usize;
         let i = (2 * generator.next_int(r + 1)) as usize;
-        
+
         let p = sample_pos[c];
         let k = sample_pos[c + 1];
         let a = sample_pos[i];
         let f = sample_pos[i + 1];
-        
+
         sample_pos[i] = p;
         sample_pos[i + 1] = k;
         sample_pos[c] = a;
@@ -383,8 +392,14 @@ fn render_camera_frame(frames: &[AppCameraRays], width: u32, height: u32) -> std
     }
 
     let colours = [
-        [0.5, 0.5, 0.5], [0.8, 0.7, 0.7], [0.3, 0.7, 1.0], [0.6, 0.6, 0.6],
-        [0.7, 0.7, 0.7], [0.8, 0.6, 0.4], [1.0, 0.4, 0.4], [1.0, 0.1, 0.1],
+        [0.5, 0.5, 0.5],
+        [0.8, 0.7, 0.7],
+        [0.3, 0.7, 1.0],
+        [0.6, 0.6, 0.6],
+        [0.7, 0.7, 0.7],
+        [0.8, 0.6, 0.4],
+        [1.0, 0.4, 0.4],
+        [1.0, 0.1, 0.1],
     ];
 
     let mut img = RgbImage::new(width, height);
@@ -395,26 +410,31 @@ fn render_camera_frame(frames: &[AppCameraRays], width: u32, height: u32) -> std
             let alignment = ray.1;
             let material = ray.2 as usize;
 
-            let target_colour = if (distance - 1.0).abs() < f64::EPSILON && alignment == 0.0 && material == 0 {
-                [208.0, 230.0, 252.0]
-            } else {
-                let colour = colours.get(material).unwrap_or(&[1.0, 1.0, 1.0]);
-                [
-                    alignment * colour[0] * 255.0,
-                    alignment * colour[1] * 255.0,
-                    alignment * colour[2] * 255.0,
-                ]
-            };
+            let target_colour =
+                if (distance - 1.0).abs() < f64::EPSILON && alignment == 0.0 && material == 0 {
+                    [208.0, 230.0, 252.0]
+                } else {
+                    let colour = colours.get(material).unwrap_or(&[1.0, 1.0, 1.0]);
+                    [
+                        alignment * colour[0] * 255.0,
+                        alignment * colour[1] * 255.0,
+                        alignment * colour[2] * 255.0,
+                    ]
+                };
 
             let x = (idx as u32) % width;
             let y = height - 1 - ((idx as u32) / width);
-            
+
             #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-            img.put_pixel(x, y, Rgb([
-                target_colour[0] as u8,
-                target_colour[1] as u8,
-                target_colour[2] as u8,
-            ]));
+            img.put_pixel(
+                x,
+                y,
+                Rgb([
+                    target_colour[0] as u8,
+                    target_colour[1] as u8,
+                    target_colour[2] as u8,
+                ]),
+            );
         }
     }
 

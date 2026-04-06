@@ -11,8 +11,12 @@ impl RateLimiter {
     pub fn new() -> Self {
         let now = Instant::now();
         Self {
-            ip_tat: now.checked_sub(Duration::from_secs_f64(50.0 / 15.0)).unwrap_or(now),
-            player_tat: now.checked_sub(Duration::from_secs_f64(25.0 / 3.0)).unwrap_or(now),
+            ip_tat: now
+                .checked_sub(Duration::from_secs_f64(50.0 / 15.0))
+                .unwrap_or(now),
+            player_tat: now
+                .checked_sub(Duration::from_secs_f64(25.0 / 3.0))
+                .unwrap_or(now),
         }
     }
 
