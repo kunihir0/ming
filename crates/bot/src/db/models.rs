@@ -47,6 +47,7 @@ pub struct PairedServer {
     pub server_port: i32,
     pub player_token: i32,
     pub name: String,
+    pub auto_reconnect: i32,
 }
 
 #[derive(Insertable, Debug, Clone)]
@@ -57,6 +58,7 @@ pub struct NewPairedServer {
     pub server_port: i32,
     pub player_token: i32,
     pub name: String,
+    pub auto_reconnect: i32,
 }
 
 #[derive(

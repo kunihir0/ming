@@ -1,0 +1,1 @@
+﻿ALTER TABLE paired_servers ADD COLUMN auto_reconnect INTEGER NOT NULL DEFAULT 0;

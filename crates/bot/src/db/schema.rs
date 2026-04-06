@@ -29,6 +29,7 @@ diesel::table! {
         server_port -> Integer,
         player_token -> Integer,
         name -> Text,
+        auto_reconnect -> Integer,
     }
 }
 

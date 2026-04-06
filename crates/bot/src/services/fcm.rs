@@ -166,6 +166,7 @@ fn handle_fcm_message(
                 server_port: port,
                 player_token: token,
                 name: title.to_string(),
+                auto_reconnect: 1, // Auto connect on first pair
             };
 
             let insert_res = diesel::insert_into(paired_servers)
