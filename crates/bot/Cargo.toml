@@ -4,7 +4,21 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-poise = "0.6.1"
 push-receiver = { path = "../push-receiver" }
-serenity = { version = "0.12.5", features = ["client", "gateway", "model", "cache"] }
+rustplus = { path = "../rustplus" }
 tokio.workspace = true
+serde.workspace = true
+reqwest.workspace = true
+rustls.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+poise.workspace = true
+serenity.workspace = true
+diesel.workspace = true
+libsqlite3-sys = { workspace = true, features = ["bundled"] }
+diesel_migrations.workspace = true
+dotenvy.workspace = true
+chrono.workspace = true
+anyhow.workspace = true
+serde_json.workspace = true

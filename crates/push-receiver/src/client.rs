@@ -1,6 +1,7 @@
 use crate::decrypt::decrypt;
 use crate::error::Result;
-use crate::register::{FcmRegistration, register};
+use crate::proto::AppData;
+use crate::register::{register, FcmRegistration};
 use reqwest::Client;
 use tokio::sync::mpsc;
 
@@ -9,6 +10,7 @@ use tokio::sync::mpsc;
 pub struct Notification {
     pub decrypted: Vec<u8>,
     pub persistent_id: Option<String>,
+    pub app_data: Vec<AppData>,
 }
 
 /// A builder for constructing a `PushReceiver`.
@@ -95,6 +97,7 @@ impl PushReceiverBuilder {
                         .send(Notification {
                             decrypted: raw_data,
                             persistent_id: msg.persistent_id,
+                            app_data: msg.app_data,
                         })
                         .await;
                     continue;
@@ -116,6 +119,7 @@ impl PushReceiverBuilder {
                                 .send(Notification {
                                     decrypted,
                                     persistent_id: msg.persistent_id,
+                                    app_data: msg.app_data,
                                 })
                                 .await
                                 .is_err()
@@ -136,6 +140,83 @@ impl PushReceiverBuilder {
         Ok((
             PushReceiver {
                 registration,
+                sender_id: self.sender_id,
+            },
+            decrypted_rx,
+        ))
+    }
+
+    /// Listens for push notifications using existing FCM credentials without re-registering.
+    ///
+    /// This skips the checkin and registration phases and directly opens the MCS connection.
+    /// Note: Encrypted payloads (which require the ECDH keys generated during registration) 
+    /// cannot be decrypted using this method and will be yielded as raw encrypted bytes.
+    ///
+    /// # Errors
+    ///
+    /// This method does not currently return an error, but returns `Result` for consistency with `connect`.
+    #[allow(clippy::unused_async)]
+    pub async fn listen(
+        self,
+        android_id: u64,
+        security_token: u64,
+    ) -> Result<(PushReceiver, mpsc::Receiver<Notification>)> {
+        let (tx, mut rx) = mpsc::channel(100);
+        let (decrypted_tx, decrypted_rx) = mpsc::channel(100);
+
+        let persistent_ids = std::sync::Arc::new(tokio::sync::Mutex::new(self.persistent_ids));
+        let mcs_persistent_ids = persistent_ids.clone();
+        
+        tokio::spawn(async move {
+            let mut retry_count = 0;
+            loop {
+                if let Err(e) = crate::mcs::connect(android_id, security_token, mcs_persistent_ids.clone(), tx.clone()).await {
+                    tracing::error!("MCS connection failed: {e}");
+                }
+
+                retry_count += 1;
+                let timeout = std::cmp::min(retry_count, 15);
+                tokio::time::sleep(std::time::Duration::from_secs(timeout)).await;
+            }
+        });
+
+        // Spawn minimal forwarding task
+        tokio::spawn(async move {
+            while let Some(msg) = rx.recv().await {
+                if let Some(ref id) = msg.persistent_id {
+                    let mut ids = persistent_ids.lock().await;
+                    if ids.contains(id) {
+                        continue;
+                    }
+                    ids.push(id.clone());
+                }
+
+                // Without the original keys, we can only forward the raw payload.
+                // For Rust+ pairing, this is usually just unencrypted JSON (or in app_data).
+                let _ = decrypted_tx
+                    .send(Notification {
+                        decrypted: msg.raw_data.unwrap_or_default(),
+                        persistent_id: msg.persistent_id,
+                        app_data: msg.app_data,
+                    })
+                    .await;
+            }
+        });
+
+        Ok((
+            PushReceiver {
+                registration: FcmRegistration {
+                    token: String::new(),
+                    android_id,
+                    security_token,
+                    app_id: String::new(),
+                    keys: crate::register::Keys {
+                        private_key: String::new(),
+                        public_key: String::new(),
+                        auth_secret: String::new(),
+                    },
+                    fcm: serde_json::Value::Null,
+                },
                 sender_id: self.sender_id,
             },
             decrypted_rx,
@@ -168,3 +249,4 @@ impl PushReceiver {
         &self.sender_id
     }
 }
+

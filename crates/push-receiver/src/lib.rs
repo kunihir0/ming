@@ -18,5 +18,5 @@ pub mod proto {
 }
 
 pub use android_fcm::AndroidFcm;
-pub use client::{PushReceiver, PushReceiverBuilder};
+pub use client::{PushReceiver, PushReceiverBuilder, Notification};
 pub use error::{Error, Result};
