@@ -1,4 +1,7 @@
-use crate::db::schema::{fcm_credentials, guild_configs, paired_servers, server_channels};
+use crate::db::schema::{
+    fcm_credentials, guild_configs, paired_servers, pairing_requests, server_channels,
+    server_settings,
+};
 use diesel::prelude::*;
 
 #[derive(Queryable, Selectable, Insertable, Identifiable, AsChangeset, Debug, Clone)]
@@ -11,6 +14,31 @@ pub struct GuildConfig {
     pub manual_chat_channel_id: Option<String>,
     pub manual_alerts_channel_id: Option<String>,
     pub in_game_prefix: String,
+    pub management_channel_id: Option<String>,
+}
+
+#[derive(Queryable, Selectable, Insertable, Identifiable, Debug, Clone)]
+#[diesel(table_name = pairing_requests)]
+pub struct PairingRequest {
+    pub id: String,
+    pub guild_id: String,
+    pub fcm_credential_id: i32,
+    pub server_ip: String,
+    pub server_port: i32,
+    pub player_token: i32,
+    pub name: String,
+}
+
+#[derive(Insertable, Debug, Clone)]
+#[diesel(table_name = pairing_requests)]
+pub struct NewPairingRequest {
+    pub id: String,
+    pub guild_id: String,
+    pub fcm_credential_id: i32,
+    pub server_ip: String,
+    pub server_port: i32,
+    pub player_token: i32,
+    pub name: String,
 }
 
 #[derive(Queryable, Selectable, Identifiable, Associations, Debug, Clone)]
@@ -74,4 +102,32 @@ pub struct ServerChannel {
     pub chat_channel_id: Option<String>,
     pub alerts_channel_id: Option<String>,
     pub dashboard_message_id: Option<String>,
+    pub config_channel_id: Option<String>,
+    pub config_message_id: Option<String>,
+}
+
+#[derive(
+    Queryable, Selectable, Insertable, Identifiable, AsChangeset, Associations, Debug, Clone,
+)]
+#[diesel(belongs_to(PairedServer, foreign_key = server_id))]
+#[diesel(primary_key(server_id))]
+#[diesel(table_name = server_settings)]
+pub struct ServerSettings {
+    pub server_id: i32,
+    pub in_game_prefix: String,
+    pub bridge_rust_to_discord: i32,
+    pub bridge_discord_to_rust: i32,
+    pub command_cooldown: i32,
+    pub chat_cooldown: i32,
+}
+
+#[derive(Insertable, Debug, Clone)]
+#[diesel(table_name = server_settings)]
+pub struct NewServerSettings {
+    pub server_id: i32,
+    pub in_game_prefix: String,
+    pub bridge_rust_to_discord: i32,
+    pub bridge_discord_to_rust: i32,
+    pub command_cooldown: i32,
+    pub chat_cooldown: i32,
 }

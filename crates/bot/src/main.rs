@@ -20,6 +20,7 @@ pub struct Data {
     pub db_pool: DbPool,
     pub push_receivers: Arc<Mutex<std::collections::HashMap<i32, tokio::task::JoinHandle<()>>>>,
     pub rustplus_clients: Arc<Mutex<std::collections::HashMap<i32, rustplus::RustPlusClient>>>,
+    pub chat_queues: Arc<Mutex<std::collections::HashMap<i32, tokio::sync::mpsc::Sender<String>>>>,
 }
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -58,24 +59,48 @@ async fn main() -> anyhow::Result<()> {
             commands: vec![
                 commands::setup::setup(),
                 commands::credentials::credentials(),
+                commands::servers::servers(),
             ],
             event_handler: |ctx, event, _framework, data| {
                 Box::pin(async move {
                     match event {
-                        serenity::FullEvent::InteractionCreate { interaction } => {
-                            if let Some(component_interaction) = interaction.as_message_component()
-                            {
+                        serenity::FullEvent::InteractionCreate { interaction } => match interaction
+                        {
+                            serenity::Interaction::Component(component) => {
                                 if let Err(e) = services::rustplus_client::handle_interaction(
-                                    ctx,
-                                    component_interaction,
-                                    data,
+                                    ctx, component, data,
                                 )
                                 .await
                                 {
                                     tracing::error!("Error handling interaction: {e}");
                                 }
+                                if let Err(e) =
+                                    services::config_dashboard::handle_config_interaction(
+                                        ctx, component, data,
+                                    )
+                                    .await
+                                {
+                                    tracing::error!("Error handling config interaction: {e}");
+                                }
+                                if let Err(e) = services::management::handle_pairing_interaction(
+                                    ctx, component, data,
+                                )
+                                .await
+                                {
+                                    tracing::error!("Error handling pairing interaction: {e}");
+                                }
                             }
-                        }
+                            serenity::Interaction::Modal(modal) => {
+                                if let Err(e) = services::config_dashboard::handle_modal_submit(
+                                    ctx, modal, data,
+                                )
+                                .await
+                                {
+                                    tracing::error!("Error handling config modal: {e}");
+                                }
+                            }
+                            _ => {}
+                        },
                         serenity::FullEvent::Message { new_message } => {
                             if let Err(e) = services::rustplus_client::handle_discord_message(
                                 ctx,
@@ -105,6 +130,7 @@ async fn main() -> anyhow::Result<()> {
                         db_pool,
                         push_receivers: Arc::new(Mutex::new(std::collections::HashMap::new())),
                         rustplus_clients: Arc::new(Mutex::new(std::collections::HashMap::new())),
+                        chat_queues: Arc::new(Mutex::new(std::collections::HashMap::new())),
                     };
 
                     services::fcm::boot_existing_receivers(

@@ -10,7 +10,7 @@ use crate::db::schema::server_channels::dsl::server_channels;
 use diesel::prelude::*;
 use poise::serenity_prelude as serenity;
 use rustplus::proto::{AppInfo, AppTeamInfo};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 /// Handles the setup of a newly paired server, creating channels or using existing ones
 ///
@@ -36,7 +36,8 @@ pub async fn handle_new_paired_server(
     let guild_id = guild_id_str.parse::<u64>()?;
     let guild_id = serenity::GuildId::new(guild_id);
 
-    let (category_id, dashboard_id, chat_id, alerts_id) = if config.setup_mode == "Auto" {
+    let (category_id, dashboard_id, chat_id, alerts_id, config_id) = if config.setup_mode == "Auto"
+    {
         info!("Auto-creating channels for server: {}", server.name);
 
         let category_name = format!("Rust - {}", server.name);
@@ -75,11 +76,21 @@ pub async fn handle_new_paired_server(
             )
             .await?;
 
+        let config_channel = guild_id
+            .create_channel(
+                &ctx.http,
+                serenity::CreateChannel::new("config")
+                    .kind(serenity::ChannelType::Text)
+                    .category(category.id),
+            )
+            .await?;
+
         (
             Some(category.id.get().to_string()),
             Some(dashboard_channel.id.get().to_string()),
             Some(chat_channel.id.get().to_string()),
             Some(alerts_channel.id.get().to_string()),
+            Some(config_channel.id.get().to_string()),
         )
     } else {
         info!("Using manual channels for server: {}", server.name);
@@ -88,6 +99,7 @@ pub async fn handle_new_paired_server(
             config.manual_dashboard_channel_id.clone(),
             config.manual_chat_channel_id.clone(),
             config.manual_alerts_channel_id.clone(),
+            None,
         )
     };
 
@@ -99,7 +111,43 @@ pub async fn handle_new_paired_server(
         return Err(anyhow::anyhow!("Missing dashboard channel"));
     };
 
-    let dash_channel_id = serenity::ChannelId::new(dash_id_str.parse::<u64>()?);
+    let dash_channel_id = serenity::ChannelId::new(
+        dash_id_str
+            .parse::<u64>()
+            .map_err(|e| anyhow::anyhow!("Invalid dashboard ID: {e}"))?,
+    );
+
+    // Initialize Default Settings
+    use crate::db::models::NewServerSettings;
+    use crate::db::schema::server_settings::dsl::server_settings;
+    let default_settings = NewServerSettings {
+        server_id: server.id,
+        in_game_prefix: "!".to_string(),
+        bridge_rust_to_discord: 1,
+        bridge_discord_to_rust: 1,
+        command_cooldown: 0,
+        chat_cooldown: 0,
+    };
+    diesel::insert_into(server_settings)
+        .values(&default_settings)
+        .execute(&mut conn)?;
+
+    // Send initial config embed if channel exists
+    let mut config_msg_id = None;
+    if let Some(ref cfg_id_str) = config_id {
+        let cfg_channel_id = serenity::ChannelId::new(
+            cfg_id_str
+                .parse::<u64>()
+                .map_err(|e| anyhow::anyhow!("Invalid config ID: {e}"))?,
+        );
+        let msg = cfg_channel_id
+            .send_message(
+                &ctx.http,
+                serenity::CreateMessage::new().content("Initializing settings..."),
+            )
+            .await?;
+        config_msg_id = Some(msg.id.get().to_string());
+    }
 
     // Send initial offline dashboard embed
     let embed = serenity::CreateEmbed::new()
@@ -139,11 +187,20 @@ pub async fn handle_new_paired_server(
         chat_channel_id: chat_id,
         alerts_channel_id: alerts_id,
         dashboard_message_id: Some(message.id.get().to_string()),
+        config_channel_id: config_id,
+        config_message_id: config_msg_id,
     };
 
     diesel::insert_into(server_channels)
         .values(&new_channels)
         .execute(&mut conn)?;
+
+    if new_channels.config_channel_id.is_some() {
+        let _ = crate::services::config_dashboard::update_config_dashboard(
+            &ctx.http, db_pool, server.id,
+        )
+        .await;
+    }
 
     info!("Dashboard setup complete for server {}", server.name);
 
@@ -184,6 +241,12 @@ pub async fn update_dashboard_online(
 
     let channel_id = serenity::ChannelId::new(channel_id_str.parse::<u64>()?);
     let message_id = serenity::MessageId::new(msg_id_str.parse::<u64>()?);
+
+    // Check if channel exists before editing
+    if let Err(e) = channel_id.to_channel(&http).await {
+        warn!("Failed to fetch dashboard channel {channel_id}: {e}. It might have been deleted manually.");
+        return Ok(());
+    }
 
     // 1. Server Info Embed
     let mut server_embed = serenity::CreateEmbed::new()

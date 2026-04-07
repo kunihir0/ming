@@ -24,6 +24,7 @@ pub async fn setup(
     #[description = "Alerts Channel (Manual mode only)"] alerts_channel: Option<serenity::Channel>,
 ) -> Result<(), Error> {
     let guild_id_str = ctx.guild_id().ok_or("Must be run in a guild")?.to_string();
+    let management_channel_id = ctx.channel_id().to_string();
 
     let mut conn = ctx.data().db_pool.get()?;
 
@@ -36,6 +37,7 @@ pub async fn setup(
                 manual_chat_channel_id: None,
                 manual_alerts_channel_id: None,
                 in_game_prefix: "!".to_string(),
+                management_channel_id: Some(management_channel_id),
             };
 
             diesel::insert_into(guild_configs)
@@ -45,7 +47,7 @@ pub async fn setup(
                 .set(&config)
                 .execute(&mut conn)?;
 
-            ctx.say("Setup complete! Mode set to Auto-Create Categories.")
+            ctx.say("Setup complete! Mode set to Auto-Create Categories. This channel will now receive pairing requests.")
                 .await?;
         }
         SetupModeChoice::Manual => {
@@ -61,6 +63,7 @@ pub async fn setup(
                 manual_chat_channel_id: Some(chat.id().to_string()),
                 manual_alerts_channel_id: Some(alerts.id().to_string()),
                 in_game_prefix: "!".to_string(),
+                management_channel_id: Some(management_channel_id),
             };
 
             diesel::insert_into(guild_configs)
@@ -70,7 +73,7 @@ pub async fn setup(
                 .set(&config)
                 .execute(&mut conn)?;
 
-            ctx.say("Setup complete! Mode set to Manual with the provided channels.")
+            ctx.say("Setup complete! Mode set to Manual with the provided channels. This channel will now receive pairing requests.")
                 .await?;
         }
     }
