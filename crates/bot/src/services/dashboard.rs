@@ -244,7 +244,9 @@ pub async fn update_dashboard_online(
 
     // Check if channel exists before editing
     if let Err(e) = channel_id.to_channel(&http).await {
-        warn!("Failed to fetch dashboard channel {channel_id}: {e}. It might have been deleted manually.");
+        warn!(
+            "Failed to fetch dashboard channel {channel_id}: {e}. It might have been deleted manually."
+        );
         return Ok(());
     }
 

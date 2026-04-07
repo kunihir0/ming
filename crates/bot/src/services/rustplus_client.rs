@@ -285,9 +285,13 @@ pub async fn connect_server(
     let pool_clone = data.db_pool.clone();
     let ctx_clone = ctx.clone();
     let server_name = server.name.clone();
+    let rust_server_ip = server.server_ip.clone();
+    let server_port = server.server_port;
     let chat_channel_id = server_channel
         .as_ref()
         .and_then(|sc| sc.chat_channel_id.clone());
+    let data_clone = data.clone();
+    let client_clone = client.clone();
 
     // Cache current info for updates
     let current_server_info = server_info;
@@ -332,6 +336,29 @@ pub async fn connect_server(
                             Err(_) => break,
                         }
                     };
+
+                    // Process In-Game Commands
+                    let data_clone = data_clone.clone();
+                    let client_clone = client_clone.clone();
+                    let server_ip_clone = rust_server_ip.clone();
+                    let message_text_clone = message_text.clone();
+                    let settings_clone = settings.clone();
+                    tokio::spawn(async move {
+                        if let Ok(Some(response)) = data_clone
+                            .gcommands
+                            .handle_message(
+                                &message_text_clone,
+                                server_id,
+                                &server_ip_clone,
+                                server_port,
+                                &settings_clone,
+                                &data_clone,
+                            )
+                            .await
+                        {
+                            let _ = client_clone.send_team_message(&response).await;
+                        }
+                    });
 
                     #[allow(clippy::collapsible_if)]
                     if settings.bridge_rust_to_discord == 1

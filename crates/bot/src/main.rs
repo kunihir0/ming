@@ -2,6 +2,7 @@
 
 pub mod commands;
 pub mod db;
+pub mod gcommands;
 pub mod services;
 
 use anyhow::Context as _;
@@ -21,6 +22,8 @@ pub struct Data {
     pub push_receivers: Arc<Mutex<std::collections::HashMap<i32, tokio::task::JoinHandle<()>>>>,
     pub rustplus_clients: Arc<Mutex<std::collections::HashMap<i32, rustplus::RustPlusClient>>>,
     pub chat_queues: Arc<Mutex<std::collections::HashMap<i32, tokio::sync::mpsc::Sender<String>>>>,
+    pub battlemetrics: Arc<services::battlemetrics::BattlemetricsService>,
+    pub gcommands: Arc<gcommands::GCommandRegistry>,
 }
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -34,26 +37,21 @@ async fn main() -> anyhow::Result<()> {
 
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    let database_url =
-        env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite://db.sqlite".to_string());
+    let database_url = env::var("DATABASE_URL").context("DATABASE_URL must be set")?;
     let db_pool = db::establish_connection_pool(&database_url);
 
-    // Run migrations
     {
-        let mut conn = db_pool
-            .get()
-            .context("Failed to get DB connection from pool")?;
+        let mut conn = db_pool.get()?;
         conn.run_pending_migrations(MIGRATIONS)
-            .map_err(|e| anyhow::anyhow!("Failed to run migrations: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("Migration error: {e}"))?;
         info!("Database migrations applied.");
     }
 
-    let token = env::var("DISCORD_TOKEN").context("Missing DISCORD_TOKEN env var")?;
+    let token = env::var("DISCORD_TOKEN").context("Missing DISCORD_TOKEN")?;
     let intents = serenity::GatewayIntents::non_privileged()
-        | serenity::GatewayIntents::GUILD_MESSAGES
-        | serenity::GatewayIntents::MESSAGE_CONTENT;
+        | serenity::GatewayIntents::MESSAGE_CONTENT
+        | serenity::GatewayIntents::GUILD_MESSAGES;
 
-    #[allow(clippy::collapsible_if)]
     let framework = poise::Framework::<Data, Error>::builder()
         .options(poise::FrameworkOptions {
             commands: vec![
@@ -131,6 +129,10 @@ async fn main() -> anyhow::Result<()> {
                         push_receivers: Arc::new(Mutex::new(std::collections::HashMap::new())),
                         rustplus_clients: Arc::new(Mutex::new(std::collections::HashMap::new())),
                         chat_queues: Arc::new(Mutex::new(std::collections::HashMap::new())),
+                        battlemetrics: Arc::new(
+                            services::battlemetrics::BattlemetricsService::new(),
+                        ),
+                        gcommands: Arc::new(gcommands::GCommandRegistry::new()),
                     };
 
                     services::fcm::boot_existing_receivers(

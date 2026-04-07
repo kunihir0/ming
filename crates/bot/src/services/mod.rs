@@ -1,3 +1,4 @@
+pub mod battlemetrics;
 pub mod config_dashboard;
 pub mod dashboard;
 pub mod fcm;
