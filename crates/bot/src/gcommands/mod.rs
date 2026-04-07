@@ -1,4 +1,5 @@
 pub mod pop;
+pub mod vending;
 
 use crate::Data;
 use crate::db::models::ServerSettings;
@@ -44,6 +45,7 @@ impl GCommandRegistry {
 
         // Register commands here
         registry.register(pop::Pop);
+        registry.register(vending::Vending);
 
         registry
     }

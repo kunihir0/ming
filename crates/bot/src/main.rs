@@ -4,6 +4,7 @@ pub mod commands;
 pub mod db;
 pub mod gcommands;
 pub mod services;
+pub mod utils;
 
 use anyhow::Context as _;
 use db::DbPool;
@@ -24,6 +25,7 @@ pub struct Data {
     pub chat_queues: Arc<Mutex<std::collections::HashMap<i32, tokio::sync::mpsc::Sender<String>>>>,
     pub battlemetrics: Arc<services::battlemetrics::BattlemetricsService>,
     pub gcommands: Arc<gcommands::GCommandRegistry>,
+    pub map_service: Arc<services::map::MapService>,
 }
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -32,7 +34,9 @@ pub type Context<'a> = poise::Context<'a, Data, Error>;
 #[tokio::main]
 #[allow(clippy::too_many_lines)]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .with_env_filter("bot=debug,rustplus=debug,push_receiver=info,serenity=info")
+        .init();
     let _ = dotenvy::dotenv();
 
     let _ = rustls::crypto::ring::default_provider().install_default();
@@ -133,6 +137,7 @@ async fn main() -> anyhow::Result<()> {
                             services::battlemetrics::BattlemetricsService::new(),
                         ),
                         gcommands: Arc::new(gcommands::GCommandRegistry::new()),
+                        map_service: Arc::new(services::map::MapService::new()),
                     };
 
                     services::fcm::boot_existing_receivers(

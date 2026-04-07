@@ -42,40 +42,39 @@ pub fn start_listener(
     ctx: serenity::Context,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
-        // FCM connect requires sending sender_id (Steam ID usually, or hardcoded project ID)
-        // Using Steam ID for authorized_entity.
-        info!("Starting FCM listener for credential ID {}", cred.id);
+        loop {
+            info!("Starting FCM listener for credential ID {}", cred.id);
 
-        // The user provided their own Android ID and Security Token via the slash command,
-        // so we don't need to re-register with Google (which is failing with 404 anyway).
-        // We just start the MCS socket listener directly.
-        let android_id: u64 = cred.gcm_android_id.parse().unwrap_or(0);
-        let security_token: u64 = cred.gcm_security_token.parse().unwrap_or(0);
+            let android_id: u64 = cred.gcm_android_id.parse().unwrap_or(0);
+            let security_token: u64 = cred.gcm_security_token.parse().unwrap_or(0);
 
-        let connection_res = PushReceiver::builder(&cred.steam_id)
-            .listen(android_id, security_token)
-            .await;
+            let connection_res = PushReceiver::builder(&cred.steam_id)
+                .listen(android_id, security_token)
+                .await;
 
-        let (_receiver, mut notification_stream) = match connection_res {
-            Ok(res) => res,
-            Err(e) => {
-                error!(
-                    "Failed to connect PushReceiver for cred ID {}: {:?}",
-                    cred.id, e
-                );
-                return;
+            let (_receiver, mut notification_stream) = match connection_res {
+                Ok(res) => res,
+                Err(e) => {
+                    error!(
+                        "Failed to connect PushReceiver for cred ID {}: {:?}. Retrying in 5s...",
+                        cred.id, e
+                    );
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    continue;
+                }
+            };
+
+            info!("FCM listener connected for credential ID {}", cred.id);
+
+            while let Some(notif) = notification_stream.recv().await {
+                if let Err(e) = handle_fcm_message(&notif, &cred, &db_pool, &ctx).await {
+                    error!("Error handling FCM message: {e}");
+                }
             }
-        };
 
-        info!("FCM listener connected for credential ID {}", cred.id);
-
-        while let Some(notif) = notification_stream.recv().await {
-            if let Err(e) = handle_fcm_message(&notif, &cred, &db_pool, &ctx).await {
-                error!("Error handling FCM message: {e}");
-            }
+            warn!("FCM listener stream ended for credential ID {}. Reconnecting...", cred.id);
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         }
-
-        warn!("FCM listener stream ended for credential ID {}", cred.id);
     })
 }
 
@@ -91,15 +90,6 @@ async fn handle_fcm_message(
     use crate::db::schema::paired_servers::dsl as ps_dsl;
     use crate::db::schema::pairing_requests::dsl as pr_dsl;
 
-    info!(
-        "Received FCM payload with {} app_data items",
-        payload.app_data.len()
-    );
-
-    for item in &payload.app_data {
-        tracing::debug!("FCM Item: {} = {}", item.key, item.value);
-    }
-
     let app_data = &payload.app_data;
 
     let channel_id = app_data
@@ -107,27 +97,27 @@ async fn handle_fcm_message(
         .find(|item| item.key == "channelId")
         .map(|item| item.value.as_str());
 
-    tracing::debug!("FCM Channel ID: {:?}", channel_id);
+    info!(
+        "Received FCM notification: channelId={:?}, total_items={}, data={:?}",
+        channel_id,
+        app_data.len(),
+        app_data
+    );
 
-    if channel_id != Some("pairing") {
-        return Ok(());
-    }
+    // SUPER-FUZZY DETECTION: Scan every single field for anything that looks like a pairing JSON
+    for item in app_data {
+        let val = item.value.trim();
+        if !val.starts_with('{') {
+            continue;
+        }
 
-    let body_str = app_data
-        .iter()
-        .find(|item| item.key == "body")
-        .map(|item| item.value.as_str());
-
-    if let Some(body_str) = body_str {
-        tracing::debug!("FCM Body: {}", body_str);
-        let Ok(body) = serde_json::from_str::<Value>(body_str) else {
-            warn!("Failed to parse pairing body JSON: {}", body_str);
-            return Ok(());
+        let Ok(body) = serde_json::from_str::<Value>(val) else {
+            continue;
         };
 
-        if body.get("type").and_then(Value::as_str) == Some("server") {
+        // If it has an IP and a playerToken, it's a pairing request regardless of 'type'
+        if body.get("ip").is_some() && body.get("playerToken").is_some() {
             let ip = body.get("ip").and_then(Value::as_str).unwrap_or("");
-            // Rust+ appPort is sometimes string, sometimes number depending on the JSON
             let port = body
                 .get("port")
                 .and_then(|v| {
@@ -151,19 +141,23 @@ async fn handle_fcm_message(
                 })
                 .unwrap_or(0);
 
-            // Name is typically extracted from the title of the pairing notification, or desc.
-            // Let's check title first.
-            let title = app_data
-                .iter()
-                .find(|item| item.key == "title")
-                .map_or("Unknown Server", |item| item.value.as_str());
+            // Extract name from the body or notification title
+            let title = body
+                .get("name")
+                .and_then(Value::as_str)
+                .or_else(|| {
+                    app_data
+                        .iter()
+                        .find(|i| i.key == "title" || i.key == "gcm.notification.title")
+                        .map(|i| i.value.as_str())
+                })
+                .unwrap_or("Unknown Server");
 
             if port == 0 || token == 0 || ip.is_empty() {
-                warn!("Received invalid pairing payload body: {:?}", body);
-                return Ok(());
+                continue;
             }
 
-            info!("Processing pairing request for: {title} ({ip}:{port})");
+            info!("Caught Pairing Request (Fuzzy): {title} ({ip}:{port})");
 
             // Save to DB
             let mut conn = db_pool.get()?;
@@ -177,7 +171,7 @@ async fn handle_fcm_message(
                 .optional()?;
 
             if existing.is_some() {
-                info!("Server already paired, skipping dashboard creation.");
+                info!("Server already paired, skipping.");
                 return Ok(());
             }
 
@@ -236,6 +230,8 @@ async fn handle_fcm_message(
                         .components(vec![components]),
                 )
                 .await?;
+
+            return Ok(()); // Stop after finding the first valid pairing JSON
         }
     }
 

@@ -197,19 +197,40 @@ pub async fn connect_server(
         u16::try_from(server.server_port).unwrap_or(28082),
         steam_id,
         server.player_token,
-        false, // assuming no proxy for now
+        false, // Try direct first
     );
 
-    client.connect().await?;
+    match client.connect().await {
+        Ok(_) => {
+            info!(
+                "Connected to Rust+ server {} ({}:{}) directly.",
+                server.name, server.server_ip, server.server_port
+            );
+        }
+        Err(e) => {
+            warn!(
+                "Failed to connect directly to {}, retrying with Facepunch proxy... Error: {}",
+                server.name, e
+            );
+            // Retry with proxy
+            client = RustPlusClient::new(
+                server.server_ip.clone(),
+                u16::try_from(server.server_port).unwrap_or(28082),
+                steam_id,
+                server.player_token,
+                true, // Use proxy
+            );
+            client.connect().await?;
+            info!(
+                "Connected to Rust+ server {} ({}:{}) via Facepunch proxy.",
+                server.name, server.server_ip, server.server_port
+            );
+        }
+    }
 
     let Some(mut rx) = client.take_broadcast_receiver() else {
         return Err(anyhow::anyhow!("Failed to acquire broadcast receiver"));
     };
-
-    info!(
-        "Connected to Rust+ server {} ({}:{})",
-        server.name, server.server_ip, server.server_port
-    );
 
     lock.insert(server_id, client.clone());
 

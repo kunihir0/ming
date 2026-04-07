@@ -51,18 +51,21 @@ impl BattlemetricsService {
         // Battlemetrics search is fuzzy. Searching by IP is generally reliable.
         // We avoid searching by Port because we only have the Rust+ App Port,
         // but Battlemetrics indexes by the Game Port.
-        let url = format!(
-            "https://api.battlemetrics.com/servers?filter[search]={ip}&filter[game]=rust"
-        );
+        let url =
+            format!("https://api.battlemetrics.com/servers?filter[search]={ip}&filter[game]=rust");
 
         let resp = self.client.get(&url).send().await?;
         if !resp.status().is_success() {
-            error!("Battlemetrics API error: {} for URL: {}", resp.status(), url);
+            error!(
+                "Battlemetrics API error: {} for URL: {}",
+                resp.status(),
+                url
+            );
             return Ok(None);
         }
 
         let data: BattlemetricsServerResponse = resp.json().await?;
-        
+
         // Return the first server found.
         Ok(data.data.into_iter().next())
     }

@@ -11,8 +11,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{Mutex, broadcast, mpsc, oneshot};
 use tokio::time::{Duration, timeout};
-use tokio_tungstenite::{connect_async, tungstenite::protocol::Message as WsMessage};
-use tracing::{debug, error, warn};
+use tokio_tungstenite::{
+    connect_async,
+    tungstenite::client::IntoClientRequest,
+    tungstenite::protocol::Message as WsMessage,
+};
+use tracing::{debug, error, info, warn};
 
 type RequestMap = Arc<Mutex<HashMap<u32, oneshot::Sender<AppMessage>>>>;
 
@@ -89,7 +93,28 @@ impl RustPlusClient {
 
         debug!("Connecting to Rust+ server at {}", address);
 
-        let (ws_stream, _) = connect_async(&address).await?;
+        let mut request = address
+            .clone()
+            .into_client_request()
+            .map_err(Error::WebSocket)?;
+
+        if self.use_facepunch_proxy {
+            // Community 'Gold' standard headers
+            request.headers_mut().insert(
+                http::header::ORIGIN,
+                http::HeaderValue::from_static("https://rustplus.facepunch.com"),
+            );
+            request.headers_mut().insert(
+                http::header::USER_AGENT,
+                http::HeaderValue::from_static("@facepunch/RustCompanion"),
+            );
+        }
+
+        info!("WebSocket Handshake: {} (Headers: {:?})", address, request.headers());
+
+        let (ws_stream, _) = connect_async(request)
+            .await
+            .map_err(Error::WebSocket)?;
         debug!("Connected to Rust+ server");
 
         let (mut write, mut read) = ws_stream.split();
