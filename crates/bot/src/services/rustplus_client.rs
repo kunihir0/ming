@@ -201,7 +201,7 @@ pub async fn connect_server(
     );
 
     match client.connect().await {
-        Ok(_) => {
+        Ok(()) => {
             info!(
                 "Connected to Rust+ server {} ({}:{}) directly.",
                 server.name, server.server_ip, server.server_port
@@ -277,11 +277,14 @@ pub async fn connect_server(
                 let Ok(mut conn) = db_pool_clone.get() else {
                     break;
                 };
-                ss_dsl::server_settings
+                match ss_dsl::server_settings
                     .find(server_id)
                     .select(ss_dsl::chat_cooldown)
                     .first::<i32>(&mut conn)
-                    .unwrap_or(0)
+                {
+                    Ok(c) => c,
+                    Err(_) => 0,
+                }
             };
 
             if let Err(e) = client_clone.send_team_message(&msg).await {

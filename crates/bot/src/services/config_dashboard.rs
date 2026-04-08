@@ -140,7 +140,10 @@ pub async fn handle_config_interaction(
         interaction.defer(&ctx.http).await?;
         update_config_dashboard(&ctx.http, &data.db_pool, server_id).await?;
     } else if custom_id.starts_with("config_edit_") {
-        let server_id: i32 = custom_id.split('_').next_back().unwrap_or("0").parse()?;
+        let server_id: i32 = match custom_id.split('_').next_back() {
+            Some(id) => id.parse()?,
+            None => "0".parse()?,
+        };
 
         let mut conn = data.db_pool.get()?;
         let settings: ServerSettings = ss_dsl::server_settings.find(server_id).first(&mut conn)?;
@@ -195,7 +198,10 @@ pub async fn handle_modal_submit(
     let custom_id = &modal.data.custom_id;
 
     if custom_id.starts_with("config_modal_") {
-        let server_id: i32 = custom_id.split('_').next_back().unwrap_or("0").parse()?;
+        let server_id: i32 = match custom_id.split('_').next_back() {
+            Some(id) => id.parse()?,
+            None => "0".parse()?,
+        };
 
         let mut prefix = "!".to_string();
         let mut cmd_cd = 0;
@@ -206,13 +212,22 @@ pub async fn handle_modal_submit(
                 if let serenity::ActionRowComponent::InputText(it) = component {
                     match it.custom_id.as_str() {
                         "prefix" => {
-                            prefix = it.value.clone().unwrap_or_else(|| "!".to_string());
+                            prefix = match it.value.clone() {
+                                Some(p) => p,
+                                None => "!".to_string(),
+                            };
                         }
                         "cmd_cd" => {
-                            cmd_cd = it.value.as_ref().and_then(|v| v.parse().ok()).unwrap_or(0);
+                            cmd_cd = match it.value.as_ref().and_then(|v| v.parse().ok()) {
+                                Some(c) => c,
+                                None => 0,
+                            };
                         }
                         "chat_cd" => {
-                            chat_cd = it.value.as_ref().and_then(|v| v.parse().ok()).unwrap_or(0);
+                            chat_cd = match it.value.as_ref().and_then(|v| v.parse().ok()) {
+                                Some(c) => c,
+                                None => 0,
+                            };
                         }
                         _ => {}
                     }

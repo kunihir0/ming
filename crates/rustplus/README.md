@@ -28,7 +28,11 @@ async fn main() -> rustplus::Result<()> {
     client.connect().await?;
 
     let info = client.get_info().await?;
-    println!("Server Name: {}", info.response.unwrap().get_info.unwrap().name);
+    if let Some(resp) = info.response {
+        if let Some(get_info) = resp.get_info {
+            println!("Server Name: {}", get_info.name);
+        }
+    }
 
     client.send_team_message("Hello from Rust!").await?;
 

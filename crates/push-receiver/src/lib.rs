@@ -1,4 +1,5 @@
 #![allow(clippy::module_name_repetitions)]
+#![allow(clippy::manual_unwrap_or_default, clippy::manual_unwrap_or)]
 
 pub mod android_fcm;
 pub mod checkin;

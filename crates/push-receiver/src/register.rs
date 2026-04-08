@@ -85,7 +85,10 @@ pub async fn register(client: &Client, sender_id: &str) -> Result<FcmRegistratio
             continue;
         }
 
-        let token = res.split('=').nth(1).unwrap_or("").to_string();
+        let token = match res.split('=').nth(1) {
+            Some(t) => t.to_string(),
+            None => String::new(),
+        };
         if token.is_empty() {
             return Err(Error::Registration("Invalid token format".to_string()));
         }

@@ -27,7 +27,10 @@ impl GCommand for Vending {
                 None => return Ok(Some(format!("Item '{query}' not found."))),
             };
 
-            let item_name = get_item_name(item_id.parse().unwrap_or(0));
+            let item_name = get_item_name(match item_id.parse() {
+                Ok(id) => id,
+                Err(_) => 0,
+            });
 
             // Use MapService to fetch size and vending machines
             let map_size = ctx

@@ -24,8 +24,14 @@ pub fn decrypt(
             .map_err(|e| Error::Crypto(format!("Base64 decode failed: {e}")))
     };
 
-    let salt_b64 = salt_str.strip_prefix("salt=").unwrap_or(salt_str);
-    let dh_key_str = crypto_key_str.strip_prefix("dh=").unwrap_or(crypto_key_str);
+    let salt_b64 = match salt_str.strip_prefix("salt=") {
+        Some(s) => s,
+        None => salt_str,
+    };
+    let dh_key_str = match crypto_key_str.strip_prefix("dh=") {
+        Some(s) => s,
+        None => crypto_key_str,
+    };
 
     let salt = decode_b64(salt_b64)?;
     let auth_secret = decode_b64(auth_secret_b64)?;

@@ -36,7 +36,7 @@ pub struct RustPlusClient {
     /// Channel for sending requests to the WebSocket connection task
     tx: Option<mpsc::Sender<AppRequest>>,
     /// Channel for broadcasting incoming messages
-    broadcast_tx: Option<broadcast::Sender<AppMessage>>,
+    broadcast_tx: Arc<std::sync::Mutex<Option<broadcast::Sender<AppMessage>>>>,
 }
 
 #[must_use]
@@ -73,7 +73,7 @@ impl RustPlusClient {
             requests: Arc::new(Mutex::new(HashMap::new())),
             rate_limiter: Arc::new(Mutex::new(RateLimiter::new())),
             tx: None,
-            broadcast_tx: None,
+            broadcast_tx: Arc::new(std::sync::Mutex::new(None)),
         }
     }
 
@@ -81,6 +81,7 @@ impl RustPlusClient {
     ///
     /// # Errors
     /// Returns an error if the WebSocket connection fails.
+    #[allow(clippy::too_many_lines)]
     pub async fn connect(&mut self) -> Result<()> {
         let address = if self.use_facepunch_proxy {
             format!(
@@ -129,10 +130,13 @@ impl RustPlusClient {
         requests.lock().await.clear();
 
         self.tx = Some(tx);
-        self.broadcast_tx = Some(broadcast_tx.clone());
+        if let Ok(mut guard) = self.broadcast_tx.lock() {
+            *guard = Some(broadcast_tx.clone());
+        }
 
         // Read task
         let read_requests = Arc::clone(&self.requests);
+        let self_broadcast_tx = Arc::clone(&self.broadcast_tx);
         tokio::spawn(async move {
             while let Some(msg) = read.next().await {
                 match msg {
@@ -167,19 +171,38 @@ impl RustPlusClient {
                     }
                 }
             }
+            if let Ok(mut guard) = self_broadcast_tx.lock() {
+                *guard = None;
+            }
         });
 
         // Write task
         tokio::spawn(async move {
-            while let Some(req) = rx.recv().await {
-                let mut buf = Vec::new();
-                if let Err(e) = req.encode(&mut buf) {
-                    error!("Failed to encode AppRequest: {}", e);
-                    continue;
-                }
-                if let Err(e) = write.send(WsMessage::Binary(buf.into())).await {
-                    error!("Failed to send AppRequest: {}", e);
-                    break;
+            let mut interval = tokio::time::interval(Duration::from_secs(30));
+            loop {
+                tokio::select! {
+                    req_opt = rx.recv() => {
+                        match req_opt {
+                            Some(req) => {
+                                let mut buf = Vec::new();
+                                if let Err(e) = req.encode(&mut buf) {
+                                    error!("Failed to encode AppRequest: {}", e);
+                                    continue;
+                                }
+                                if let Err(e) = write.send(WsMessage::Binary(buf.into())).await {
+                                    error!("Failed to send AppRequest: {}", e);
+                                    break;
+                                }
+                            }
+                            None => break, // tx dropped
+                        }
+                    }
+                    _ = interval.tick() => {
+                        if let Err(e) = write.send(WsMessage::Ping(vec![].into())).await {
+                            error!("Failed to send Ping: {}", e);
+                            break;
+                        }
+                    }
                 }
             }
         });
@@ -190,7 +213,9 @@ impl RustPlusClient {
     /// Disconnects the client.
     pub fn disconnect(&mut self) {
         self.tx = None;
-        self.broadcast_tx = None;
+        if let Ok(mut guard) = self.broadcast_tx.lock() {
+            *guard = None;
+        }
     }
 
     /// Checks if the client is connected.
@@ -203,8 +228,9 @@ impl RustPlusClient {
     #[must_use]
     pub fn take_broadcast_receiver(&self) -> Option<broadcast::Receiver<AppMessage>> {
         self.broadcast_tx
-            .as_ref()
-            .map(tokio::sync::broadcast::Sender::subscribe)
+            .lock()
+            .ok()
+            .and_then(|guard| guard.as_ref().map(tokio::sync::broadcast::Sender::subscribe))
     }
 
     async fn send_request_inner(&self, mut request: AppRequest) -> Result<AppMessage> {

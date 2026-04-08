@@ -414,7 +414,11 @@ fn render_camera_frame(
                 if (distance - 1.0).abs() < f64::EPSILON && alignment == 0.0 && material == 0 {
                     [208.0, 230.0, 252.0]
                 } else {
-                    let colour = colours.get(material).unwrap_or(&[1.0, 1.0, 1.0]);
+                    let default_colour = [1.0, 1.0, 1.0];
+                    let colour = match colours.get(material) {
+                        Some(c) => c,
+                        None => &default_colour,
+                    };
                     [
                         alignment * colour[0] * 255.0,
                         alignment * colour[1] * 255.0,

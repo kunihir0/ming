@@ -118,17 +118,17 @@ async fn handle_fcm_message(
         // If it has an IP and a playerToken, it's a pairing request regardless of 'type'
         if body.get("ip").is_some() && body.get("playerToken").is_some() {
             let ip = body.get("ip").and_then(Value::as_str).unwrap_or("");
-            let port = body
-                .get("port")
-                .and_then(|v| {
-                    if let Some(s) = v.as_str() {
-                        s.parse::<i32>().ok()
-                    } else {
-                        #[allow(clippy::cast_possible_truncation)]
-                        v.as_i64().map(|n| n as i32)
-                    }
-                })
-                .unwrap_or(0);
+            let port = match body.get("port").and_then(|v| {
+                if let Some(s) = v.as_str() {
+                    s.parse::<i32>().ok()
+                } else {
+                    #[allow(clippy::cast_possible_truncation)]
+                    v.as_i64().map(|n| n as i32)
+                }
+            }) {
+                Some(p) => p,
+                None => 0,
+            };
             let token = body
                 .get("playerToken")
                 .and_then(|v| {

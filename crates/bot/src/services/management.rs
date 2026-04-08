@@ -9,6 +9,7 @@ use tracing::{error, info};
 ///
 /// # Errors
 /// Returns an error if the database query fails or Discord API calls fail.
+#[allow(clippy::too_many_lines)]
 pub async fn handle_pairing_interaction(
     ctx: &serenity::Context,
     interaction: &serenity::ComponentInteraction,
@@ -20,7 +21,10 @@ pub async fn handle_pairing_interaction(
 
     if custom_id.starts_with("pair_approve_") || custom_id.starts_with("pair_ignore_") {
         let is_approve = custom_id.starts_with("pair_approve_");
-        let request_id = custom_id.split('_').next_back().unwrap_or_default();
+        let request_id = match custom_id.split('_').next_back() {
+            Some(id) => id,
+            None => "",
+        };
 
         let mut conn = data.db_pool.get()?;
 

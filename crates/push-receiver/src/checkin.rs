@@ -59,8 +59,15 @@ pub async fn checkin(
 
     let message = AndroidCheckinResponse::decode(response)?;
 
+    #[allow(clippy::manual_unwrap_or_default)]
     Ok(CheckinResult {
-        android_id: message.android_id.unwrap_or(0),
-        security_token: message.security_token.unwrap_or(0),
+        android_id: match message.android_id {
+            Some(id) => id,
+            None => 0,
+        },
+        security_token: match message.security_token {
+            Some(token) => token,
+            None => 0,
+        },
     })
 }

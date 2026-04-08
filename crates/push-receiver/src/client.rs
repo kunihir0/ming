@@ -207,9 +207,14 @@ impl PushReceiverBuilder {
 
                 // Without the original keys, we can only forward the raw payload.
                 // For Rust+ pairing, this is usually just unencrypted JSON (or in app_data).
+                #[allow(clippy::manual_unwrap_or_default)]
+                let decrypted = match msg.raw_data {
+                    Some(data) => data,
+                    None => Vec::new(),
+                };
                 let _ = decrypted_tx
                     .send(Notification {
-                        decrypted: msg.raw_data.unwrap_or_default(),
+                        decrypted,
                         persistent_id: msg.persistent_id,
                         app_data: msg.app_data,
                     })

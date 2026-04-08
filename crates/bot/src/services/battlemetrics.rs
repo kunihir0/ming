@@ -81,11 +81,10 @@ impl BattlemetricsService {
             Some(s) => {
                 let players = s.attributes.players;
                 let max = s.attributes.max_players;
-                let queue = s
-                    .attributes
-                    .details
-                    .and_then(|d| d.rust_queued_players)
-                    .unwrap_or(0);
+                let queue = match s.attributes.details.and_then(|d| d.rust_queued_players) {
+                    Some(q) => q,
+                    None => 0,
+                };
 
                 if queue > 0 {
                     Ok(format!("{players}/{max} ({queue})"))
