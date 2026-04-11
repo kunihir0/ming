@@ -27,6 +27,23 @@ pub struct BattlemetricsDetails {
     pub rust_queued_players: Option<i32>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct BattlemetricsPlayerResponse {
+    pub included: Option<Vec<BattlemetricsIncluded>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BattlemetricsIncluded {
+    #[serde(rename = "type")]
+    pub item_type: String,
+    pub attributes: Option<BattlemetricsIncludedAttributes>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BattlemetricsIncludedAttributes {
+    pub name: String,
+}
+
 pub struct BattlemetricsService {
     client: Client,
 }
@@ -37,6 +54,30 @@ impl BattlemetricsService {
         Self {
             client: Client::new(),
         }
+    }
+
+    /// Fetches server data from Battlemetrics by ID.
+    ///
+    /// # Errors
+    /// Returns an error if the network request fails or JSON parsing fails.
+    pub async fn get_server_by_id(
+        &self,
+        server_id: &str,
+    ) -> anyhow::Result<Option<BattlemetricsServerData>> {
+        let url = format!("https://api.battlemetrics.com/servers/{}", server_id);
+
+        let resp = self.client.get(&url).send().await?;
+        if !resp.status().is_success() {
+            return Ok(None);
+        }
+
+        #[derive(Debug, Deserialize)]
+        struct SingleServerResponse {
+            data: BattlemetricsServerData,
+        }
+
+        let data: SingleServerResponse = resp.json().await?;
+        Ok(Some(data.data))
     }
 
     /// Fetches server data from Battlemetrics by address.
@@ -68,6 +109,40 @@ impl BattlemetricsService {
 
         // Return the first server found.
         Ok(data.data.into_iter().next())
+    }
+
+    /// Fetches active player names for a specific server by ID.
+    ///
+    /// # Errors
+    /// Returns an error if the server is not found or API fails.
+    pub async fn get_active_players(&self, server_id: &str) -> anyhow::Result<Vec<String>> {
+        let url = format!(
+            "https://api.battlemetrics.com/servers/{}?include=player",
+            server_id
+        );
+
+        let resp = self.client.get(&url).send().await?;
+        if !resp.status().is_success() {
+            return Err(anyhow::anyhow!(
+                "Battlemetrics API error: {}",
+                resp.status()
+            ));
+        }
+
+        let data: BattlemetricsPlayerResponse = resp.json().await?;
+        let mut players = Vec::new();
+
+        if let Some(included) = data.included {
+            for item in included {
+                if item.item_type == "player" {
+                    if let Some(attrs) = item.attributes {
+                        players.push(attrs.name);
+                    }
+                }
+            }
+        }
+
+        Ok(players)
     }
 
     /// Fetches server population string.

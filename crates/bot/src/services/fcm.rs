@@ -72,7 +72,10 @@ pub fn start_listener(
                 }
             }
 
-            warn!("FCM listener stream ended for credential ID {}. Reconnecting...", cred.id);
+            warn!(
+                "FCM listener stream ended for credential ID {}. Reconnecting...",
+                cred.id
+            );
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         }
     })

@@ -12,8 +12,7 @@ use std::sync::Arc;
 use tokio::sync::{Mutex, broadcast, mpsc, oneshot};
 use tokio::time::{Duration, timeout};
 use tokio_tungstenite::{
-    connect_async,
-    tungstenite::client::IntoClientRequest,
+    connect_async, tungstenite::client::IntoClientRequest,
     tungstenite::protocol::Message as WsMessage,
 };
 use tracing::{debug, error, info, warn};
@@ -111,11 +110,13 @@ impl RustPlusClient {
             );
         }
 
-        info!("WebSocket Handshake: {} (Headers: {:?})", address, request.headers());
+        info!(
+            "WebSocket Handshake: {} (Headers: {:?})",
+            address,
+            request.headers()
+        );
 
-        let (ws_stream, _) = connect_async(request)
-            .await
-            .map_err(Error::WebSocket)?;
+        let (ws_stream, _) = connect_async(request).await.map_err(Error::WebSocket)?;
         debug!("Connected to Rust+ server");
 
         let (mut write, mut read) = ws_stream.split();
@@ -227,10 +228,11 @@ impl RustPlusClient {
     /// Takes the broadcast receiver from the client, allowing the consumer to listen for broadcasts.
     #[must_use]
     pub fn take_broadcast_receiver(&self) -> Option<broadcast::Receiver<AppMessage>> {
-        self.broadcast_tx
-            .lock()
-            .ok()
-            .and_then(|guard| guard.as_ref().map(tokio::sync::broadcast::Sender::subscribe))
+        self.broadcast_tx.lock().ok().and_then(|guard| {
+            guard
+                .as_ref()
+                .map(tokio::sync::broadcast::Sender::subscribe)
+        })
     }
 
     async fn send_request_inner(&self, mut request: AppRequest) -> Result<AppMessage> {

@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+scraper.workspace = true
+regex.workspace = true
+moka.workspace = true
+rand.workspace = true
 push-receiver = { path = "../push-receiver" }
 rustplus = { path = "../rustplus" }
 tokio.workspace = true

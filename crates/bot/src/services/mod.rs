@@ -5,3 +5,4 @@ pub mod fcm;
 pub mod management;
 pub mod map;
 pub mod rustplus_client;
+pub mod steam;

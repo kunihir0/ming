@@ -25,6 +25,7 @@ pub struct Data {
     pub rustplus_clients: Arc<Mutex<std::collections::HashMap<i32, rustplus::RustPlusClient>>>,
     pub chat_queues: Arc<Mutex<std::collections::HashMap<i32, tokio::sync::mpsc::Sender<String>>>>,
     pub battlemetrics: Arc<services::battlemetrics::BattlemetricsService>,
+    pub steam_service: Arc<services::steam::SteamService>,
     pub gcommands: Arc<gcommands::GCommandRegistry>,
     pub map_service: Arc<services::map::MapService>,
 }
@@ -63,6 +64,7 @@ async fn main() -> anyhow::Result<()> {
                 commands::setup::setup(),
                 commands::credentials::credentials(),
                 commands::servers::servers(),
+                commands::team_check::team_check(),
             ],
             event_handler: |ctx, event, _framework, data| {
                 Box::pin(async move {
@@ -137,6 +139,7 @@ async fn main() -> anyhow::Result<()> {
                         battlemetrics: Arc::new(
                             services::battlemetrics::BattlemetricsService::new(),
                         ),
+                        steam_service: Arc::new(services::steam::SteamService::new()?),
                         gcommands: Arc::new(gcommands::GCommandRegistry::new()),
                         map_service: Arc::new(services::map::MapService::new()),
                     };

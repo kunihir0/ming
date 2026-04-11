@@ -6,7 +6,16 @@ members = [
 ]
 resolver = "2"
 
+[workspace.lints.clippy]
+unwrap_used = "deny"
+# You might also want to catch .expect()
+expect_used = "deny"
+
+
 [workspace.dependencies]
+scraper = "0.20"
+regex = "1.10"
+moka = { version = "0.12", features = ["future"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
