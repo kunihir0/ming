@@ -6,11 +6,41 @@ use crate::db::schema::server_channels::dsl as sc_dsl;
 use crate::db::schema::server_settings::dsl as ss_dsl;
 use diesel::prelude::*;
 use poise::serenity_prelude as serenity;
+use std::sync::Arc;
+
+/// Updates all configuration dashboards to match the latest template
+///
+/// # Errors
+/// Returns an error if the database query fails.
+pub async fn update_all_config_dashboards(
+    http: &Arc<serenity::Http>,
+    db_pool: &DbPool,
+) -> anyhow::Result<()> {
+    let mut conn = db_pool.get()?;
+    let server_ids: Vec<i32> = sc_dsl::server_channels
+        .select(sc_dsl::server_id)
+        .filter(sc_dsl::config_channel_id.is_not_null())
+        .filter(sc_dsl::config_message_id.is_not_null())
+        .load(&mut conn)?;
+
+    for server_id in server_ids {
+        if let Err(e) = update_config_dashboard(http, db_pool, server_id).await {
+            tracing::error!(
+                "Failed to auto-update config dashboard for server {}: {}",
+                server_id,
+                e
+            );
+        }
+    }
+
+    Ok(())
+}
 
 /// Updates the configuration dashboard message in Discord.
 ///
 /// # Errors
 /// Returns an error if the database query fails or the Discord API call fails.
+#[allow(clippy::too_many_lines)]
 pub async fn update_config_dashboard(
     http: impl serenity::CacheHttp,
     db_pool: &DbPool,
@@ -63,6 +93,31 @@ pub async fn update_config_dashboard(
             "Chat Cooldown",
             format!("{}s", settings.chat_cooldown),
             true,
+        )
+        .field(
+            "Event: Cargo",
+            if settings.events_cargo == 1 { "✅ Enabled" } else { "❌ Disabled" },
+            true,
+        )
+        .field(
+            "Event: Heli",
+            if settings.events_heli == 1 { "✅ Enabled" } else { "❌ Disabled" },
+            true,
+        )
+        .field(
+            "Event: OilRig",
+            if settings.events_oilrig == 1 { "✅ Enabled" } else { "❌ Disabled" },
+            true,
+        )
+        .field(
+            "Event: CH47",
+            if settings.events_ch47 == 1 { "✅ Enabled" } else { "❌ Disabled" },
+            true,
+        )
+        .field(
+            "Event: Vending",
+            if settings.events_vending == 1 { "✅ Enabled" } else { "❌ Disabled" },
+            true,
         );
 
     let row1 = serenity::CreateActionRow::Buttons(vec![
@@ -83,6 +138,24 @@ pub async fn update_config_dashboard(
     ]);
 
     let row2 = serenity::CreateActionRow::Buttons(vec![
+        serenity::CreateButton::new(format!("config_toggle_ecargo_{server_id}"))
+            .label("Cargo")
+            .style(if settings.events_cargo == 1 { serenity::ButtonStyle::Success } else { serenity::ButtonStyle::Danger }),
+        serenity::CreateButton::new(format!("config_toggle_eheli_{server_id}"))
+            .label("Heli")
+            .style(if settings.events_heli == 1 { serenity::ButtonStyle::Success } else { serenity::ButtonStyle::Danger }),
+        serenity::CreateButton::new(format!("config_toggle_eoilrig_{server_id}"))
+            .label("OilRig")
+            .style(if settings.events_oilrig == 1 { serenity::ButtonStyle::Success } else { serenity::ButtonStyle::Danger }),
+        serenity::CreateButton::new(format!("config_toggle_ech47_{server_id}"))
+            .label("CH47")
+            .style(if settings.events_ch47 == 1 { serenity::ButtonStyle::Success } else { serenity::ButtonStyle::Danger }),
+        serenity::CreateButton::new(format!("config_toggle_evending_{server_id}"))
+            .label("Vending")
+            .style(if settings.events_vending == 1 { serenity::ButtonStyle::Success } else { serenity::ButtonStyle::Danger }),
+    ]);
+
+    let row3 = serenity::CreateActionRow::Buttons(vec![
         serenity::CreateButton::new(format!("config_edit_{server_id}"))
             .label("Edit Values (Prefix/Cooldowns)")
             .style(serenity::ButtonStyle::Primary),
@@ -94,7 +167,7 @@ pub async fn update_config_dashboard(
             message_id,
             serenity::EditMessage::new()
                 .embed(embed)
-                .components(vec![row1, row2]),
+                .components(vec![row1, row2, row3]),
         )
         .await?;
 
@@ -105,6 +178,7 @@ pub async fn update_config_dashboard(
 ///
 /// # Errors
 /// Returns an error if the database update fails or the Discord API call fails.
+#[allow(clippy::too_many_lines)]
 pub async fn handle_config_interaction(
     ctx: &serenity::Context,
     interaction: &serenity::ComponentInteraction,
@@ -119,22 +193,36 @@ pub async fn handle_config_interaction(
 
         let mut conn = data.db_pool.get()?;
 
-        if field == "r2d" {
-            let current: i32 = ss_dsl::server_settings
-                .find(server_id)
-                .select(ss_dsl::bridge_rust_to_discord)
-                .first(&mut conn)?;
-            diesel::update(ss_dsl::server_settings.find(server_id))
-                .set(ss_dsl::bridge_rust_to_discord.eq(i32::from(current != 1)))
-                .execute(&mut conn)?;
-        } else if field == "d2r" {
-            let current: i32 = ss_dsl::server_settings
-                .find(server_id)
-                .select(ss_dsl::bridge_discord_to_rust)
-                .first(&mut conn)?;
-            diesel::update(ss_dsl::server_settings.find(server_id))
-                .set(ss_dsl::bridge_discord_to_rust.eq(i32::from(current != 1)))
-                .execute(&mut conn)?;
+        match field {
+            "r2d" => {
+                let current: i32 = ss_dsl::server_settings.find(server_id).select(ss_dsl::bridge_rust_to_discord).first(&mut conn)?;
+                diesel::update(ss_dsl::server_settings.find(server_id)).set(ss_dsl::bridge_rust_to_discord.eq(i32::from(current != 1))).execute(&mut conn)?;
+            }
+            "d2r" => {
+                let current: i32 = ss_dsl::server_settings.find(server_id).select(ss_dsl::bridge_discord_to_rust).first(&mut conn)?;
+                diesel::update(ss_dsl::server_settings.find(server_id)).set(ss_dsl::bridge_discord_to_rust.eq(i32::from(current != 1))).execute(&mut conn)?;
+            }
+            "ecargo" => {
+                let current: i32 = ss_dsl::server_settings.find(server_id).select(ss_dsl::events_cargo).first(&mut conn)?;
+                diesel::update(ss_dsl::server_settings.find(server_id)).set(ss_dsl::events_cargo.eq(i32::from(current != 1))).execute(&mut conn)?;
+            }
+            "eheli" => {
+                let current: i32 = ss_dsl::server_settings.find(server_id).select(ss_dsl::events_heli).first(&mut conn)?;
+                diesel::update(ss_dsl::server_settings.find(server_id)).set(ss_dsl::events_heli.eq(i32::from(current != 1))).execute(&mut conn)?;
+            }
+            "eoilrig" => {
+                let current: i32 = ss_dsl::server_settings.find(server_id).select(ss_dsl::events_oilrig).first(&mut conn)?;
+                diesel::update(ss_dsl::server_settings.find(server_id)).set(ss_dsl::events_oilrig.eq(i32::from(current != 1))).execute(&mut conn)?;
+            }
+            "ech47" => {
+                let current: i32 = ss_dsl::server_settings.find(server_id).select(ss_dsl::events_ch47).first(&mut conn)?;
+                diesel::update(ss_dsl::server_settings.find(server_id)).set(ss_dsl::events_ch47.eq(i32::from(current != 1))).execute(&mut conn)?;
+            }
+            "evending" => {
+                let current: i32 = ss_dsl::server_settings.find(server_id).select(ss_dsl::events_vending).first(&mut conn)?;
+                diesel::update(ss_dsl::server_settings.find(server_id)).set(ss_dsl::events_vending.eq(i32::from(current != 1))).execute(&mut conn)?;
+            }
+            _ => {}
         }
 
         interaction.defer(&ctx.http).await?;

@@ -4,6 +4,9 @@
 pub mod camera;
 pub mod client;
 pub mod error;
+pub mod events;
+pub mod monitor;
+pub mod monitors;
 pub(crate) mod ratelimit;
 
 pub mod proto {

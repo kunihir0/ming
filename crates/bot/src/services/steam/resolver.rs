@@ -1,17 +1,17 @@
 use crate::services::steam::client::SteamHttpClient;
 use anyhow::{Context, Result};
 use moka::future::Cache;
-use once_cell::sync::Lazy;
 use regex::Regex;
 use scraper::{Html, Selector};
+use std::sync::LazyLock;
 use std::time::Duration;
 
-static REGEX_STEAMID64: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^[0-9]{17}$").expect("valid regex"));
-static REGEX_PROFILE_URL: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"/profiles/([0-9]{17})").expect("valid regex"));
-static REGEX_VANITY_URL: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"/id/([^/]+)").expect("valid regex"));
+static REGEX_STEAMID64: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[0-9]{17}$").expect("valid regex"));
+static REGEX_PROFILE_URL: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"/profiles/([0-9]{17})").expect("valid regex"));
+static REGEX_VANITY_URL: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"/id/([^/]+)").expect("valid regex"));
 
 pub struct SteamIdResolver {
     client: SteamHttpClient,
@@ -19,6 +19,7 @@ pub struct SteamIdResolver {
 }
 
 impl SteamIdResolver {
+    #[must_use]
     pub fn new(client: SteamHttpClient) -> Self {
         Self {
             client,
@@ -32,6 +33,14 @@ impl SteamIdResolver {
         REGEX_STEAMID64.is_match(id)
     }
 
+    /// Resolve a Steam ID or vanity URL to a `SteamID64`
+    ///
+    /// # Panics
+    /// Panics if compiling selector fails.
+    ///
+    /// # Errors
+    /// Returns an error if the resolution fails.
+    #[allow(clippy::collapsible_if)]
     pub async fn resolve_to_id64(&self, input: &str) -> Result<String> {
         if Self::is_steam_id64(input) {
             return Ok(input.to_string());
@@ -44,7 +53,7 @@ impl SteamIdResolver {
         }
 
         let vanity_name = if let Some(caps) = REGEX_VANITY_URL.captures(input) {
-            caps.get(1).map(|m| m.as_str()).unwrap_or(input)
+            caps.get(1).map_or(input, |m| m.as_str())
         } else {
             input
         };
@@ -54,7 +63,7 @@ impl SteamIdResolver {
         }
 
         // Fetch XML representation
-        let url = format!("https://steamcommunity.com/id/{}/?xml=1", vanity_name);
+        let url = format!("https://steamcommunity.com/id/{vanity_name}/?xml=1");
         let xml = self
             .client
             .fetch_html(&url)
@@ -80,6 +89,6 @@ impl SteamIdResolver {
             }
         }
 
-        anyhow::bail!("Could not resolve vanity ID '{}' to SteamID64", vanity_name)
+        anyhow::bail!("Could not resolve vanity ID '{vanity_name}' to SteamID64")
     }
 }

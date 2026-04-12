@@ -67,6 +67,11 @@ diesel::table! {
         bridge_discord_to_rust -> Integer,
         command_cooldown -> Integer,
         chat_cooldown -> Integer,
+        events_cargo -> Integer,
+        events_heli -> Integer,
+        events_oilrig -> Integer,
+        events_ch47 -> Integer,
+        events_vending -> Integer,
     }
 }
 

@@ -17,6 +17,10 @@ pub struct SteamHttpClient {
 }
 
 impl SteamHttpClient {
+    /// Create a new Steam HTTP client
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP client cannot be built.
     pub fn new() -> Result<Self> {
         let client = Client::builder()
             .timeout(Duration::from_secs(10))
@@ -33,6 +37,10 @@ impl SteamHttpClient {
             .unwrap_or(USER_AGENTS[0])
     }
 
+    /// Fetch HTML from a URL with retries
+    ///
+    /// # Errors
+    /// Returns an error if all retries fail.
     pub async fn fetch_html(&self, url: &str) -> Result<String> {
         let max_retries = 2;
 
@@ -53,7 +61,7 @@ impl SteamHttpClient {
                 Ok(resp) => resp,
                 Err(e) => {
                     if attempt == max_retries {
-                        return Err(anyhow::anyhow!("Failed to fetch after retries: {}", e));
+                        return Err(anyhow::anyhow!("Failed to fetch after retries: {e}"));
                     }
                     sleep(Duration::from_secs(1)).await;
                     continue;
@@ -62,11 +70,8 @@ impl SteamHttpClient {
 
             if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
                 let backoff = (attempt + 1) * 2;
-                warn!(
-                    "Rate limited (429) for {}. Retrying in {}s...",
-                    url, backoff
-                );
-                sleep(Duration::from_secs(backoff as u64)).await;
+                warn!("Rate limited (429) for {url}. Retrying in {backoff}s...");
+                sleep(Duration::from_secs(u64::try_from(backoff).unwrap_or(0))).await;
                 continue;
             }
 
@@ -81,6 +86,6 @@ impl SteamHttpClient {
             return Ok(text);
         }
 
-        anyhow::bail!("Exceeded retries for {}", url)
+        anyhow::bail!("Exceeded retries for {url}")
     }
 }

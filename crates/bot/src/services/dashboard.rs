@@ -127,6 +127,11 @@ pub async fn handle_new_paired_server(
         bridge_discord_to_rust: 1,
         command_cooldown: 0,
         chat_cooldown: 0,
+        events_cargo: 1,
+        events_heli: 1,
+        events_oilrig: 1,
+        events_ch47: 1,
+        events_vending: 1,
     };
     diesel::insert_into(server_settings)
         .values(&default_settings)

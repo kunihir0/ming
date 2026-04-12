@@ -64,16 +64,16 @@ impl BattlemetricsService {
         &self,
         server_id: &str,
     ) -> anyhow::Result<Option<BattlemetricsServerData>> {
-        let url = format!("https://api.battlemetrics.com/servers/{}", server_id);
+        #[derive(Debug, Deserialize)]
+        struct SingleServerResponse {
+            data: BattlemetricsServerData,
+        }
+
+        let url = format!("https://api.battlemetrics.com/servers/{server_id}");
 
         let resp = self.client.get(&url).send().await?;
         if !resp.status().is_success() {
             return Ok(None);
-        }
-
-        #[derive(Debug, Deserialize)]
-        struct SingleServerResponse {
-            data: BattlemetricsServerData,
         }
 
         let data: SingleServerResponse = resp.json().await?;
@@ -115,11 +115,9 @@ impl BattlemetricsService {
     ///
     /// # Errors
     /// Returns an error if the server is not found or API fails.
+    #[allow(clippy::collapsible_if)]
     pub async fn get_active_players(&self, server_id: &str) -> anyhow::Result<Vec<String>> {
-        let url = format!(
-            "https://api.battlemetrics.com/servers/{}?include=player",
-            server_id
-        );
+        let url = format!("https://api.battlemetrics.com/servers/{server_id}?include=player");
 
         let resp = self.client.get(&url).send().await?;
         if !resp.status().is_success() {

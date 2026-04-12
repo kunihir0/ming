@@ -119,6 +119,11 @@ pub struct ServerSettings {
     pub bridge_discord_to_rust: i32,
     pub command_cooldown: i32,
     pub chat_cooldown: i32,
+    pub events_cargo: i32,
+    pub events_heli: i32,
+    pub events_oilrig: i32,
+    pub events_ch47: i32,
+    pub events_vending: i32,
 }
 
 #[derive(Insertable, Debug, Clone)]
@@ -130,4 +135,9 @@ pub struct NewServerSettings {
     pub bridge_discord_to_rust: i32,
     pub command_cooldown: i32,
     pub chat_cooldown: i32,
+    pub events_cargo: i32,
+    pub events_heli: i32,
+    pub events_oilrig: i32,
+    pub events_ch47: i32,
+    pub events_vending: i32,
 }

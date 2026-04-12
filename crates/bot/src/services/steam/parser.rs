@@ -1,14 +1,22 @@
 use crate::services::steam::types::{BanStatus, ProfileVisibility, SteamFriend, SteamProfile};
 use anyhow::Result;
-use once_cell::sync::Lazy;
 use regex::Regex;
 use scraper::{Html, Selector};
+use std::sync::LazyLock;
 
-static REGEX_DAYS_BAN: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"([0-9]+)\s+day\(s\)").expect("valid selector or regex"));
-static REGEX_GAME_BANS: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"([0-9]+)\s+game ban").expect("valid selector or regex"));
+static REGEX_DAYS_BAN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"([0-9]+)\s+day\(s\)").expect("valid selector or regex"));
+static REGEX_GAME_BANS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"([0-9]+)\s+game ban").expect("valid selector or regex"));
 
+/// Parse Steam profile from HTML
+///
+/// # Panics
+/// Panics if selector compilation fails (should never happen).
+///
+/// # Errors
+/// Returns an error if the HTML cannot be parsed.
+#[allow(clippy::too_many_lines, clippy::collapsible_if)]
 pub fn parse_profile(html: &str, steam_id64: String) -> Result<SteamProfile> {
     let document = Html::parse_document(html);
 
@@ -21,11 +29,10 @@ pub fn parse_profile(html: &str, steam_id64: String) -> Result<SteamProfile> {
     });
 
     let persona_sel = Selector::parse(".actual_persona_name").expect("valid selector or regex");
-    let persona_name = document
-        .select(&persona_sel)
-        .next()
-        .map(|el| el.text().collect::<String>().trim().to_string())
-        .unwrap_or_else(|| steam_id64.clone());
+    let persona_name = document.select(&persona_sel).next().map_or_else(
+        || steam_id64.clone(),
+        |el| el.text().collect::<String>().trim().to_string(),
+    );
 
     if is_not_setup {
         return Ok(SteamProfile {
@@ -88,13 +95,12 @@ pub fn parse_profile(html: &str, steam_id64: String) -> Result<SteamProfile> {
     let location = document
         .select(&location_sel)
         .next()
-        .map(|el| {
+        .and_then(|el| {
             el.text()
                 .filter(|t| !t.trim().is_empty())
                 .last()
                 .map(|t| t.trim().to_string())
         })
-        .flatten()
         .filter(|s| s != real_name.as_deref().unwrap_or(""));
 
     let summary_sel = Selector::parse(".profile_summary").expect("valid selector or regex");
@@ -146,6 +152,14 @@ pub fn parse_profile(html: &str, steam_id64: String) -> Result<SteamProfile> {
     })
 }
 
+/// Parse friends from HTML
+///
+/// # Panics
+/// Panics if selector compilation fails (should never happen).
+///
+/// # Errors
+/// Returns an error if parsing fails.
+#[allow(clippy::collapsible_if)]
 pub fn parse_friends(html: &str) -> Result<Vec<SteamFriend>> {
     let document = Html::parse_document(html);
     let mut friends = Vec::new();

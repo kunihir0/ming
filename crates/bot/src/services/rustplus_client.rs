@@ -234,9 +234,63 @@ pub async fn connect_server(
 
     lock.insert(server_id, client.clone());
 
-    // Setup Chat Queue
+    // Monitor Loop & Event Router setup
+    let (event_tx, event_rx) = tokio::sync::broadcast::channel::<rustplus::events::RustEvent>(100);
+    let mut monitor_loop = rustplus::monitor::MonitorLoop::new(client.clone(), event_tx);
+    monitor_loop.register(Box::new(rustplus::monitors::cargo::CargoMonitor::new()));
+    monitor_loop.register(Box::new(rustplus::monitors::vending::VendingMonitor::new()));
+    tokio::spawn(monitor_loop.run());
+
+    // Fetch settings for event toggles
+    let settings: ServerSettings = {
+        let mut conn = data.db_pool.get()?;
+        ss_dsl::server_settings
+            .find(server_id)
+            .first::<ServerSettings>(&mut conn)?
+    };
+
+    let mut event_config = std::collections::HashMap::new();
+    #[allow(clippy::collapsible_if)]
+    if let Some(alerts_channel) = server_channel
+        .as_ref()
+        .and_then(|sc| sc.alerts_channel_id.clone())
+    {
+        if let Ok(ch_id) = alerts_channel.parse::<u64>() {
+            let ch = serenity::ChannelId::new(ch_id);
+            if settings.events_cargo == 1 {
+                event_config.insert(crate::services::events::EventKind::Cargo, ch);
+            }
+            if settings.events_heli == 1 {
+                event_config.insert(crate::services::events::EventKind::Heli, ch);
+            }
+            if settings.events_oilrig == 1 {
+                event_config.insert(crate::services::events::EventKind::OilRig, ch);
+            }
+            if settings.events_ch47 == 1 {
+                event_config.insert(crate::services::events::EventKind::Ch47, ch);
+            }
+            if settings.events_vending == 1 {
+                event_config.insert(crate::services::events::EventKind::VendingMachine, ch);
+            }
+        }
+    }
+
+    let notifier = std::sync::Arc::new(crate::services::events::Notifier::new(
+        ctx.http.clone(),
+        event_config,
+    ));
+
+    // Setup Chat Queue early so we can pass the sender to the router
     let (tx, mut chat_rx) = mpsc::channel::<String>(100);
-    data.chat_queues.lock().await.insert(server_id, tx);
+    data.chat_queues.lock().await.insert(server_id, tx.clone());
+
+    let router = crate::services::events::EventRouter::new(
+        server_id,
+        notifier,
+        data.sub_store.clone(),
+        Some(tx),
+    );
+    tokio::spawn(router.run(event_rx));
 
     // Fetch initial server and team info
     let server_info = match client.get_info().await {

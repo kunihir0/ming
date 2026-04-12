@@ -6,6 +6,7 @@ use poise::serenity_prelude as serenity;
 use std::collections::HashSet;
 
 /// Investigate players to find probable teammates
+#[allow(clippy::too_many_lines)]
 #[poise::command(slash_command, guild_only)]
 pub async fn team_check(
     ctx: Context<'_>,
@@ -25,16 +26,14 @@ pub async fn team_check(
     };
 
     let bm_server = if let Some(ref server_id) = bm_server_id {
-        match ctx.data().battlemetrics.get_server_by_id(server_id).await? {
-            Some(s) => s,
-            None => {
-                ctx.say(format!(
-                    "❌ Could not find a Battlemetrics server with ID: {}",
-                    server_id
-                ))
-                .await?;
-                return Ok(());
-            }
+        if let Some(s) = ctx.data().battlemetrics.get_server_by_id(server_id).await? {
+            s
+        } else {
+            ctx.say(format!(
+                "❌ Could not find a Battlemetrics server with ID: {server_id}"
+            ))
+            .await?;
+            return Ok(());
         }
     } else {
         let Some(guild_id) = ctx.guild_id() else {
@@ -57,18 +56,17 @@ pub async fn team_check(
             return Ok(());
         };
 
-        match ctx
+        if let Some(s) = ctx
             .data()
             .battlemetrics
             .get_server_by_address(&paired_server.server_ip, paired_server.server_port)
             .await?
         {
-            Some(s) => s,
-            None => {
-                ctx.say("❌ Could not find the paired Rust server on Battlemetrics.")
-                    .await?;
-                return Ok(());
-            }
+            s
+        } else {
+            ctx.say("❌ Could not find the paired Rust server on Battlemetrics.")
+                .await?;
+            return Ok(());
         }
     };
 
@@ -85,13 +83,17 @@ pub async fn team_check(
         match profile_res {
             Ok(profile) => {
                 let visibility_str = format!("{:?}", profile.visibility);
-                profiles_info.push_str(&format!(
-                    "- [{}]({}) ({} | Lvl {})\n",
-                    profile.persona_name,
-                    format!("https://steamcommunity.com/profiles/{}", profile.steam_id64),
-                    visibility_str,
-                    profile.level
-                ));
+                let _ = std::fmt::Write::write_fmt(
+                    &mut profiles_info,
+                    format_args!(
+                        "- [{}]({}{}) ({} | Lvl {})\n",
+                        profile.persona_name,
+                        "https://steamcommunity.com/profiles/",
+                        profile.steam_id64,
+                        visibility_str,
+                        profile.level
+                    ),
+                );
 
                 let friends = ctx
                     .data()
@@ -104,7 +106,10 @@ pub async fn team_check(
                 }
             }
             Err(_) => {
-                profiles_info.push_str(&format!("- ❌ Failed to fetch profile for `{}`\n", target));
+                let _ = std::fmt::Write::write_fmt(
+                    &mut profiles_info,
+                    format_args!("- ❌ Failed to fetch profile for `{target}`\n"),
+                );
             }
         }
     }
@@ -132,14 +137,14 @@ pub async fn team_check(
             active_associates.len()
         );
         for associate in active_associates {
-            info.push_str(&format!("- {}\n", associate));
+            let _ = std::fmt::Write::write_fmt(&mut info, format_args!("- {associate}\n"));
         }
         info
     };
 
     let embed = serenity::CreateEmbed::new()
         .title("Network Analysis Report")
-        .color(0x808080)
+        .color(0x0080_8080)
         .field("Analyzed Targets", profiles_info, false)
         .field("Active Associates Identified", associates_info, false)
         .footer(serenity::CreateEmbedFooter::new(format!(

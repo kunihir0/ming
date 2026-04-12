@@ -1,0 +1,5 @@
+ALTER TABLE server_settings ADD COLUMN events_cargo INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE server_settings ADD COLUMN events_heli INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE server_settings ADD COLUMN events_oilrig INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE server_settings ADD COLUMN events_ch47 INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE server_settings ADD COLUMN events_vending INTEGER NOT NULL DEFAULT 1;

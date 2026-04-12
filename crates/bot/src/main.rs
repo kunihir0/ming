@@ -28,6 +28,7 @@ pub struct Data {
     pub steam_service: Arc<services::steam::SteamService>,
     pub gcommands: Arc<gcommands::GCommandRegistry>,
     pub map_service: Arc<services::map::MapService>,
+    pub sub_store: Arc<services::vending_subs::SubStore>,
 }
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -65,6 +66,7 @@ async fn main() -> anyhow::Result<()> {
                 commands::credentials::credentials(),
                 commands::servers::servers(),
                 commands::team_check::team_check(),
+                commands::vending::v(),
             ],
             event_handler: |ctx, event, _framework, data| {
                 Box::pin(async move {
@@ -142,6 +144,9 @@ async fn main() -> anyhow::Result<()> {
                         steam_service: Arc::new(services::steam::SteamService::new()?),
                         gcommands: Arc::new(gcommands::GCommandRegistry::new()),
                         map_service: Arc::new(services::map::MapService::new()),
+                        sub_store: Arc::new(
+                            services::vending_subs::SubStore::load("vending_subs.json").await,
+                        ),
                     };
 
                     services::fcm::boot_existing_receivers(
@@ -153,6 +158,15 @@ async fn main() -> anyhow::Result<()> {
 
                     services::rustplus_client::boot_existing_connections(&data, ctx.clone())
                         .await?;
+
+                    if let Err(e) = services::config_dashboard::update_all_config_dashboards(
+                        &ctx.http,
+                        &data.db_pool,
+                    )
+                    .await
+                    {
+                        tracing::error!("Failed to update config dashboards: {}", e);
+                    }
 
                     Ok(data)
                 })

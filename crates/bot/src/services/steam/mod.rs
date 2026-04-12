@@ -8,12 +8,12 @@ use crate::services::steam::resolver::SteamIdResolver;
 use crate::services::steam::types::{SteamFriend, SteamProfile};
 use anyhow::{Context, Result};
 use moka::future::Cache;
-use once_cell::sync::Lazy;
 use regex::Regex;
+use std::sync::LazyLock;
 use std::time::Duration;
 
-static REGEX_VANITY_EXTRACT: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"steamcommunity\.com/id/([^/&?]+)").expect("valid regex"));
+static REGEX_VANITY_EXTRACT: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"steamcommunity\.com/id/([^/&?]+)").expect("valid regex"));
 
 pub struct SteamService {
     client: SteamHttpClient,
@@ -23,6 +23,10 @@ pub struct SteamService {
 }
 
 impl SteamService {
+    /// Create a new `SteamService`
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP client fails to initialize.
     pub fn new() -> Result<Self> {
         let client = SteamHttpClient::new()?;
         let resolver = SteamIdResolver::new(client.clone());
@@ -43,6 +47,11 @@ impl SteamService {
         })
     }
 
+    /// Fetch Steam profile by ID or vanity URL
+    ///
+    /// # Errors
+    /// Returns an error if profile cannot be fetched or parsed.
+    #[allow(clippy::collapsible_if)]
     pub async fn get_profile(&self, input: &str) -> Result<SteamProfile> {
         let steam_id64 = self.resolver.resolve_to_id64(input).await?;
 
@@ -50,10 +59,7 @@ impl SteamService {
             return Ok(cached);
         }
 
-        let url = format!(
-            "https://steamcommunity.com/profiles/{}/?l=english",
-            steam_id64
-        );
+        let url = format!("https://steamcommunity.com/profiles/{steam_id64}/?l=english");
         let html = self.client.fetch_html(&url).await?;
 
         let mut profile = parser::parse_profile(&html, steam_id64.clone())
@@ -71,6 +77,10 @@ impl SteamService {
         Ok(profile)
     }
 
+    /// Fetch Steam friends by ID or vanity URL
+    ///
+    /// # Errors
+    /// Returns an error if friends cannot be fetched or parsed.
     pub async fn get_friends(&self, input: &str) -> Result<Vec<SteamFriend>> {
         let steam_id64 = self.resolver.resolve_to_id64(input).await?;
 
@@ -78,10 +88,7 @@ impl SteamService {
             return Ok(cached);
         }
 
-        let url = format!(
-            "https://steamcommunity.com/profiles/{}/friends/?l=english",
-            steam_id64
-        );
+        let url = format!("https://steamcommunity.com/profiles/{steam_id64}/friends/?l=english");
         let html = match self.client.fetch_html(&url).await {
             Ok(h) => h,
             Err(e) => {
@@ -101,6 +108,10 @@ impl SteamService {
         Ok(friends)
     }
 
+    /// Fetch mutual friends between two players
+    ///
+    /// # Errors
+    /// Returns an error if fetching either player's friends fails.
     pub async fn get_mutual_friends(
         &self,
         player_a: &str,
@@ -119,6 +130,10 @@ impl SteamService {
         Ok(mutuals)
     }
 
+    /// Resolve an input to a `SteamID64`
+    ///
+    /// # Errors
+    /// Returns an error if the ID cannot be resolved.
     pub async fn resolve_id(&self, input: &str) -> Result<String> {
         self.resolver.resolve_to_id64(input).await
     }
