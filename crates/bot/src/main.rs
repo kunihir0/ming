@@ -67,6 +67,7 @@ async fn main() -> anyhow::Result<()> {
                 commands::servers::servers(),
                 commands::team_check::team_check(),
                 commands::vending::v(),
+                commands::cctv::cctv(),
             ],
             event_handler: |ctx, event, _framework, data| {
                 Box::pin(async move {
@@ -155,6 +156,12 @@ async fn main() -> anyhow::Result<()> {
                         data.push_receivers.clone(),
                     )
                     .await?;
+
+                    if let Err(e) =
+                        services::dashboard::backfill_cctv_channels(&data.db_pool, ctx).await
+                    {
+                        tracing::error!("Failed to backfill CCTV channels: {}", e);
+                    }
 
                     services::rustplus_client::boot_existing_connections(&data, ctx.clone())
                         .await?;

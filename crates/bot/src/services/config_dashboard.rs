@@ -96,27 +96,47 @@ pub async fn update_config_dashboard(
         )
         .field(
             "Event: Cargo",
-            if settings.events_cargo == 1 { "✅ Enabled" } else { "❌ Disabled" },
+            if settings.events_cargo == 1 {
+                "✅ Enabled"
+            } else {
+                "❌ Disabled"
+            },
             true,
         )
         .field(
             "Event: Heli",
-            if settings.events_heli == 1 { "✅ Enabled" } else { "❌ Disabled" },
+            if settings.events_heli == 1 {
+                "✅ Enabled"
+            } else {
+                "❌ Disabled"
+            },
             true,
         )
         .field(
             "Event: OilRig",
-            if settings.events_oilrig == 1 { "✅ Enabled" } else { "❌ Disabled" },
+            if settings.events_oilrig == 1 {
+                "✅ Enabled"
+            } else {
+                "❌ Disabled"
+            },
             true,
         )
         .field(
             "Event: CH47",
-            if settings.events_ch47 == 1 { "✅ Enabled" } else { "❌ Disabled" },
+            if settings.events_ch47 == 1 {
+                "✅ Enabled"
+            } else {
+                "❌ Disabled"
+            },
             true,
         )
         .field(
             "Event: Vending",
-            if settings.events_vending == 1 { "✅ Enabled" } else { "❌ Disabled" },
+            if settings.events_vending == 1 {
+                "✅ Enabled"
+            } else {
+                "❌ Disabled"
+            },
             true,
         );
 
@@ -140,19 +160,39 @@ pub async fn update_config_dashboard(
     let row2 = serenity::CreateActionRow::Buttons(vec![
         serenity::CreateButton::new(format!("config_toggle_ecargo_{server_id}"))
             .label("Cargo")
-            .style(if settings.events_cargo == 1 { serenity::ButtonStyle::Success } else { serenity::ButtonStyle::Danger }),
+            .style(if settings.events_cargo == 1 {
+                serenity::ButtonStyle::Success
+            } else {
+                serenity::ButtonStyle::Danger
+            }),
         serenity::CreateButton::new(format!("config_toggle_eheli_{server_id}"))
             .label("Heli")
-            .style(if settings.events_heli == 1 { serenity::ButtonStyle::Success } else { serenity::ButtonStyle::Danger }),
+            .style(if settings.events_heli == 1 {
+                serenity::ButtonStyle::Success
+            } else {
+                serenity::ButtonStyle::Danger
+            }),
         serenity::CreateButton::new(format!("config_toggle_eoilrig_{server_id}"))
             .label("OilRig")
-            .style(if settings.events_oilrig == 1 { serenity::ButtonStyle::Success } else { serenity::ButtonStyle::Danger }),
+            .style(if settings.events_oilrig == 1 {
+                serenity::ButtonStyle::Success
+            } else {
+                serenity::ButtonStyle::Danger
+            }),
         serenity::CreateButton::new(format!("config_toggle_ech47_{server_id}"))
             .label("CH47")
-            .style(if settings.events_ch47 == 1 { serenity::ButtonStyle::Success } else { serenity::ButtonStyle::Danger }),
+            .style(if settings.events_ch47 == 1 {
+                serenity::ButtonStyle::Success
+            } else {
+                serenity::ButtonStyle::Danger
+            }),
         serenity::CreateButton::new(format!("config_toggle_evending_{server_id}"))
             .label("Vending")
-            .style(if settings.events_vending == 1 { serenity::ButtonStyle::Success } else { serenity::ButtonStyle::Danger }),
+            .style(if settings.events_vending == 1 {
+                serenity::ButtonStyle::Success
+            } else {
+                serenity::ButtonStyle::Danger
+            }),
     ]);
 
     let row3 = serenity::CreateActionRow::Buttons(vec![
@@ -195,32 +235,67 @@ pub async fn handle_config_interaction(
 
         match field {
             "r2d" => {
-                let current: i32 = ss_dsl::server_settings.find(server_id).select(ss_dsl::bridge_rust_to_discord).first(&mut conn)?;
-                diesel::update(ss_dsl::server_settings.find(server_id)).set(ss_dsl::bridge_rust_to_discord.eq(i32::from(current != 1))).execute(&mut conn)?;
+                let current: i32 = ss_dsl::server_settings
+                    .find(server_id)
+                    .select(ss_dsl::bridge_rust_to_discord)
+                    .first(&mut conn)?;
+                diesel::update(ss_dsl::server_settings.find(server_id))
+                    .set(ss_dsl::bridge_rust_to_discord.eq(i32::from(current != 1)))
+                    .execute(&mut conn)?;
             }
             "d2r" => {
-                let current: i32 = ss_dsl::server_settings.find(server_id).select(ss_dsl::bridge_discord_to_rust).first(&mut conn)?;
-                diesel::update(ss_dsl::server_settings.find(server_id)).set(ss_dsl::bridge_discord_to_rust.eq(i32::from(current != 1))).execute(&mut conn)?;
+                let current: i32 = ss_dsl::server_settings
+                    .find(server_id)
+                    .select(ss_dsl::bridge_discord_to_rust)
+                    .first(&mut conn)?;
+                diesel::update(ss_dsl::server_settings.find(server_id))
+                    .set(ss_dsl::bridge_discord_to_rust.eq(i32::from(current != 1)))
+                    .execute(&mut conn)?;
             }
             "ecargo" => {
-                let current: i32 = ss_dsl::server_settings.find(server_id).select(ss_dsl::events_cargo).first(&mut conn)?;
-                diesel::update(ss_dsl::server_settings.find(server_id)).set(ss_dsl::events_cargo.eq(i32::from(current != 1))).execute(&mut conn)?;
+                let current: i32 = ss_dsl::server_settings
+                    .find(server_id)
+                    .select(ss_dsl::events_cargo)
+                    .first(&mut conn)?;
+                diesel::update(ss_dsl::server_settings.find(server_id))
+                    .set(ss_dsl::events_cargo.eq(i32::from(current != 1)))
+                    .execute(&mut conn)?;
             }
             "eheli" => {
-                let current: i32 = ss_dsl::server_settings.find(server_id).select(ss_dsl::events_heli).first(&mut conn)?;
-                diesel::update(ss_dsl::server_settings.find(server_id)).set(ss_dsl::events_heli.eq(i32::from(current != 1))).execute(&mut conn)?;
+                let current: i32 = ss_dsl::server_settings
+                    .find(server_id)
+                    .select(ss_dsl::events_heli)
+                    .first(&mut conn)?;
+                diesel::update(ss_dsl::server_settings.find(server_id))
+                    .set(ss_dsl::events_heli.eq(i32::from(current != 1)))
+                    .execute(&mut conn)?;
             }
             "eoilrig" => {
-                let current: i32 = ss_dsl::server_settings.find(server_id).select(ss_dsl::events_oilrig).first(&mut conn)?;
-                diesel::update(ss_dsl::server_settings.find(server_id)).set(ss_dsl::events_oilrig.eq(i32::from(current != 1))).execute(&mut conn)?;
+                let current: i32 = ss_dsl::server_settings
+                    .find(server_id)
+                    .select(ss_dsl::events_oilrig)
+                    .first(&mut conn)?;
+                diesel::update(ss_dsl::server_settings.find(server_id))
+                    .set(ss_dsl::events_oilrig.eq(i32::from(current != 1)))
+                    .execute(&mut conn)?;
             }
             "ech47" => {
-                let current: i32 = ss_dsl::server_settings.find(server_id).select(ss_dsl::events_ch47).first(&mut conn)?;
-                diesel::update(ss_dsl::server_settings.find(server_id)).set(ss_dsl::events_ch47.eq(i32::from(current != 1))).execute(&mut conn)?;
+                let current: i32 = ss_dsl::server_settings
+                    .find(server_id)
+                    .select(ss_dsl::events_ch47)
+                    .first(&mut conn)?;
+                diesel::update(ss_dsl::server_settings.find(server_id))
+                    .set(ss_dsl::events_ch47.eq(i32::from(current != 1)))
+                    .execute(&mut conn)?;
             }
             "evending" => {
-                let current: i32 = ss_dsl::server_settings.find(server_id).select(ss_dsl::events_vending).first(&mut conn)?;
-                diesel::update(ss_dsl::server_settings.find(server_id)).set(ss_dsl::events_vending.eq(i32::from(current != 1))).execute(&mut conn)?;
+                let current: i32 = ss_dsl::server_settings
+                    .find(server_id)
+                    .select(ss_dsl::events_vending)
+                    .first(&mut conn)?;
+                diesel::update(ss_dsl::server_settings.find(server_id))
+                    .set(ss_dsl::events_vending.eq(i32::from(current != 1)))
+                    .execute(&mut conn)?;
             }
             _ => {}
         }

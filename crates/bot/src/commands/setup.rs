@@ -22,6 +22,7 @@ pub async fn setup(
     >,
     #[description = "Chat Channel (Manual mode only)"] chat_channel: Option<serenity::Channel>,
     #[description = "Alerts Channel (Manual mode only)"] alerts_channel: Option<serenity::Channel>,
+    #[description = "CCTV Channel (Manual mode only)"] cctv_channel: Option<serenity::Channel>,
 ) -> Result<(), Error> {
     let guild_id_str = ctx.guild_id().ok_or("Must be run in a guild")?.to_string();
     let management_channel_id = ctx.channel_id().to_string();
@@ -36,6 +37,7 @@ pub async fn setup(
                 manual_dashboard_channel_id: None,
                 manual_chat_channel_id: None,
                 manual_alerts_channel_id: None,
+                manual_cctv_channel_id: None,
                 in_game_prefix: "!".to_string(),
                 management_channel_id: Some(management_channel_id),
             };
@@ -55,6 +57,7 @@ pub async fn setup(
                 dashboard_channel.ok_or("Dashboard channel is required for manual mode")?;
             let chat = chat_channel.ok_or("Chat channel is required for manual mode")?;
             let alerts = alerts_channel.ok_or("Alerts channel is required for manual mode")?;
+            let cctv = cctv_channel.ok_or("CCTV channel is required for manual mode")?;
 
             let config = GuildConfig {
                 guild_id: guild_id_str.clone(),
@@ -62,6 +65,7 @@ pub async fn setup(
                 manual_dashboard_channel_id: Some(dashboard.id().to_string()),
                 manual_chat_channel_id: Some(chat.id().to_string()),
                 manual_alerts_channel_id: Some(alerts.id().to_string()),
+                manual_cctv_channel_id: Some(cctv.id().to_string()),
                 in_game_prefix: "!".to_string(),
                 management_channel_id: Some(management_channel_id),
             };

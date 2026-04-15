@@ -12,6 +12,57 @@ use poise::serenity_prelude as serenity;
 use rustplus::proto::{AppInfo, AppTeamInfo};
 use tracing::{error, info, warn};
 
+/// Backfills missing CCTV channels for existing Auto-mode paired servers.
+///
+/// # Errors
+/// Returns an error if database query fails or Discord API fails.
+#[allow(clippy::collapsible_if)]
+pub async fn backfill_cctv_channels(
+    db_pool: &DbPool,
+    ctx: &serenity::Context,
+) -> anyhow::Result<()> {
+    let mut conn = db_pool.get()?;
+    let channels: Vec<DbServerChannel> = server_channels
+        .filter(sc_dsl::cctv_channel_id.is_null())
+        .filter(sc_dsl::category_id.is_not_null()) // Implies Auto mode
+        .load(&mut conn)?;
+
+    for mut channel in channels {
+        if let Some(category_id_str) = channel.category_id.clone() {
+            if let Ok(category_id) = category_id_str.parse::<u64>() {
+                // Find guild ID by looking at the category's guild
+                if let Ok(serenity_category) = ctx
+                    .http
+                    .get_channel(serenity::ChannelId::new(category_id))
+                    .await
+                {
+                    if let Some(guild_id) = serenity_category.guild().map(|g| g.guild_id) {
+                        info!(
+                            "Backfilling CCTV channel for server_id {}",
+                            channel.server_id
+                        );
+                        let cctv_channel = guild_id
+                            .create_channel(
+                                &ctx.http,
+                                serenity::CreateChannel::new("cctv")
+                                    .kind(serenity::ChannelType::Text)
+                                    .category(serenity::ChannelId::new(category_id)),
+                            )
+                            .await?;
+
+                        channel.cctv_channel_id = Some(cctv_channel.id.get().to_string());
+                        diesel::update(server_channels.find(channel.server_id))
+                            .set(sc_dsl::cctv_channel_id.eq(channel.cctv_channel_id))
+                            .execute(&mut conn)?;
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Handles the setup of a newly paired server, creating channels or using existing ones
 ///
 /// # Errors
@@ -36,7 +87,8 @@ pub async fn handle_new_paired_server(
     let guild_id = guild_id_str.parse::<u64>()?;
     let guild_id = serenity::GuildId::new(guild_id);
 
-    let (category_id, dashboard_id, chat_id, alerts_id, config_id) = if config.setup_mode == "Auto"
+    let (category_id, dashboard_id, chat_id, alerts_id, config_id, cctv_id) = if config.setup_mode
+        == "Auto"
     {
         info!("Auto-creating channels for server: {}", server.name);
 
@@ -85,12 +137,22 @@ pub async fn handle_new_paired_server(
             )
             .await?;
 
+        let cctv_channel = guild_id
+            .create_channel(
+                &ctx.http,
+                serenity::CreateChannel::new("cctv")
+                    .kind(serenity::ChannelType::Text)
+                    .category(category.id),
+            )
+            .await?;
+
         (
             Some(category.id.get().to_string()),
             Some(dashboard_channel.id.get().to_string()),
             Some(chat_channel.id.get().to_string()),
             Some(alerts_channel.id.get().to_string()),
             Some(config_channel.id.get().to_string()),
+            Some(cctv_channel.id.get().to_string()),
         )
     } else {
         info!("Using manual channels for server: {}", server.name);
@@ -100,6 +162,7 @@ pub async fn handle_new_paired_server(
             config.manual_chat_channel_id.clone(),
             config.manual_alerts_channel_id.clone(),
             None,
+            config.manual_cctv_channel_id.clone(),
         )
     };
 
@@ -194,6 +257,8 @@ pub async fn handle_new_paired_server(
         dashboard_message_id: Some(message.id.get().to_string()),
         config_channel_id: config_id,
         config_message_id: config_msg_id,
+        cctv_channel_id: cctv_id,
+        cctv_message_id: None,
     };
 
     diesel::insert_into(server_channels)

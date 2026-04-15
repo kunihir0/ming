@@ -166,6 +166,7 @@ pub async fn delete_server(
             sc.chat_channel_id,
             sc.alerts_channel_id,
             sc.config_channel_id,
+            sc.cctv_channel_id,
         ];
 
         for id_str in channel_ids.into_iter().flatten() {

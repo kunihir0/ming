@@ -13,6 +13,7 @@ pub struct GuildConfig {
     pub manual_dashboard_channel_id: Option<String>,
     pub manual_chat_channel_id: Option<String>,
     pub manual_alerts_channel_id: Option<String>,
+    pub manual_cctv_channel_id: Option<String>,
     pub in_game_prefix: String,
     pub management_channel_id: Option<String>,
 }
@@ -104,6 +105,8 @@ pub struct ServerChannel {
     pub dashboard_message_id: Option<String>,
     pub config_channel_id: Option<String>,
     pub config_message_id: Option<String>,
+    pub cctv_channel_id: Option<String>,
+    pub cctv_message_id: Option<String>,
 }
 
 #[derive(

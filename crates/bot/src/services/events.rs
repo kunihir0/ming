@@ -13,6 +13,7 @@ pub enum EventKind {
     OilRig,
     Ch47,
     VendingMachine,
+    CameraMotion,
 }
 
 pub struct Notifier {
@@ -181,6 +182,25 @@ impl EventRouter {
                             format!(
                                 "🏪 **New Vending Machine** ({id}) spawned at `{:.0}, {:.0}`.",
                                 position.0, position.1
+                            ),
+                        )
+                        .await;
+                }
+                RustEvent::CameraMotion {
+                    camera_id,
+                    player_count,
+                    names,
+                } => {
+                    let names_str = if names.is_empty() {
+                        "Unknown".to_string()
+                    } else {
+                        names.join(", ")
+                    };
+                    self.notifier
+                        .send(
+                            EventKind::CameraMotion,
+                            format!(
+                                "📷 **Camera {camera_id}** detected motion! Players: {player_count} ({names_str})"
                             ),
                         )
                         .await;

@@ -1,3 +1,4 @@
+pub mod cctv;
 pub mod credentials;
 pub mod servers;
 pub mod setup;

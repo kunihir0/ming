@@ -5,16 +5,34 @@ use std::time::{Duration, Instant};
 #[derive(Debug, Clone)]
 pub enum RustEvent {
     CargoSpawned,
-    CargoDespawned { was_out_for: Duration },
-    CargoEgress { spawned_at: Instant },
+    CargoDespawned {
+        was_out_for: Duration,
+    },
+    CargoEgress {
+        spawned_at: Instant,
+    },
     HeliSpawned,
-    HeliDespawned { was_out_for: Duration },
-    HeliTakenDown { last_position: (f32, f32) },
-    OilRigCrateDropped { unlock_at: Instant },
+    HeliDespawned {
+        was_out_for: Duration,
+    },
+    HeliTakenDown {
+        last_position: (f32, f32),
+    },
+    OilRigCrateDropped {
+        unlock_at: Instant,
+    },
     OilRigCrateLooted,
     Ch47Entered,
     Ch47Left,
-    VendingMachineNew { position: (f32, f32), id: u32 },
+    VendingMachineNew {
+        position: (f32, f32),
+        id: u32,
+    },
+    CameraMotion {
+        camera_id: String,
+        player_count: usize,
+        names: Vec<String>,
+    },
     MarkerSnapshot(Vec<AppMarker>),
 }
 
