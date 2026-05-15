@@ -1,9 +1,9 @@
 use crate::Data;
-use crate::db::DbPool;
-use crate::db::models::{PairedServer, ServerChannel, ServerSettings};
-use crate::db::schema::paired_servers::dsl as ps_dsl;
-use crate::db::schema::server_channels::dsl as sc_dsl;
-use crate::db::schema::server_settings::dsl as ss_dsl;
+use db::DbPool;
+use db::models::{PairedServer, ServerChannel, ServerSettings};
+use db::schema::paired_servers::dsl as ps_dsl;
+use db::schema::server_channels::dsl as sc_dsl;
+use db::schema::server_settings::dsl as ss_dsl;
 use diesel::prelude::*;
 use poise::serenity_prelude as serenity;
 use std::sync::Arc;

@@ -1,5 +1,5 @@
-use crate::db::models::ServerChannel;
-use crate::db::schema::server_channels::dsl as sc_dsl;
+use db::models::ServerChannel;
+use db::schema::server_channels::dsl as sc_dsl;
 use crate::{Context, Error};
 use diesel::prelude::*;
 use poise::futures_util::StreamExt;

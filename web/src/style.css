@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+@theme {
+  --font-mono: "Share Tech Mono", monospace;
+  --font-display: "Bebas Neue", sans-serif;
+  --font-body: "DM Sans", sans-serif;
+
+  --color-rp-black: #080808;
+  --color-rp-900: #111111;
+  --color-rp-800: #1a1a1a;
+  --color-rp-700: #242424;
+  --color-rp-600: #2e2e2e;
+  --color-rp-500: #3d3d3d;
+  --color-rp-400: #666666;
+  --color-rp-300: #999999;
+  --color-rp-200: #cccccc;
+  --color-rp-100: #e8e8e8;
+  --color-rp-white: #f4f4f4;
+  --color-rp-accent: #e0e0e0;
+
+  --shadow-inner-glow: inset 0 0 20px rgba(255, 255, 255, 0.03);
+  --shadow-border-glow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --shadow-hard: 4px 4px 0px rgba(255, 255, 255, 0.12);
+
+  --letter-spacing-widest2: 0.25em;
+  --letter-spacing-widest3: 0.4em;
+}
+
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    height: 100%;
+    background-color: var(--color-rp-black);
+    color: var(--color-rp-white);
+    font-family: var(--font-body);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Scanlines Overlay */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9999;
+    background: repeating-linear-gradient(
+      to bottom,
+      transparent,
+      transparent 2px,
+      rgba(0, 0, 0, 0.15) 2px,
+      rgba(0, 0, 0, 0.15) 4px
+    );
+  }
+
+  /* Noise Overlay */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9998;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E");
+  }
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 2px;
+  height: 2px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--color-rp-500);
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.animate-pulse-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
+}

@@ -1,0 +1,25 @@
+[package]
+name = "api"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+db = { path = "../db" }
+rustplus = { path = "../rustplus" }
+axum = { version = "0.8", features = ["ws"] }
+axum-extra = { version = "0.10", features = ["cookie"] }
+reqwest = { workspace = true, features = ["json", "rustls-tls"] }
+rand = { workspace = true }
+time = { version = "0.3", features = ["serde"] }
+urlencoding = "2.1"
+async-trait = "0.1"
+dotenvy.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+diesel.workspace = true
+anyhow.workspace = true
+tokio-stream = "0.1"
+chrono.workspace = true

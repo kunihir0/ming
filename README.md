@@ -17,6 +17,8 @@ The project is structured as a Cargo workspace with three main crates to enforce
 1. **`crates/push-receiver`:** A native Rust port of the FCM (Firebase Cloud Messaging) protocol. It intercepts Rust+ server pairing notifications directly from Google's push servers.
 2. **`crates/rustplus`:** A native Rust WebSocket client for the Rust+ companion app protocol. It handles persistent server connections, real-time events, rate limiting, and camera frame rendering.
 3. **`crates/bot`:** The Discord bot application. Built using `poise` and `serenity`, it manages user interactions and uses `diesel` with SQLite for relational state management.
+4. **`crates/api`:** The backend HTTP and WebSocket API server. Exposes the bot's capabilities and map data to the frontend dashboard.
+5. **`web`:** The interactive frontend dashboard built with Vue 3 and Vite, providing a rich UI for the tactical map, team chat, and remote camera feeds.
 
 ## Quick Start
 
@@ -26,9 +28,9 @@ The project is structured as a Cargo workspace with three main crates to enforce
    cp .env.example .env
    # Edit .env to add your DISCORD_TOKEN
    ```
-3. Run the bot:
+3. Start all services (Bot, API, and Web frontend):
    ```bash
-   cargo run -p bot
+   node scripts/start.js
    ```
    *(Note: The bot will automatically run Diesel database migrations and create `db.sqlite` on its first boot).*
 4. Invite the bot to your Discord server ensuring it has the necessary permissions (e.g., Administrator for channel creation).

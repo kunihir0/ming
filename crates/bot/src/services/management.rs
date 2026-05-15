@@ -1,6 +1,6 @@
 use crate::Data;
-use crate::db::DbPool;
-use crate::db::models::{PairedServer, PairingRequest, ServerChannel};
+use db::DbPool;
+use db::models::{PairedServer, PairingRequest, ServerChannel};
 use diesel::prelude::*;
 use poise::serenity_prelude as serenity;
 use tracing::{error, info};
@@ -15,7 +15,7 @@ pub async fn handle_pairing_interaction(
     interaction: &serenity::ComponentInteraction,
     data: &Data,
 ) -> anyhow::Result<()> {
-    use crate::db::schema::pairing_requests::dsl as pr_dsl;
+    use db::schema::pairing_requests::dsl as pr_dsl;
 
     let custom_id = &interaction.data.custom_id;
 
@@ -49,7 +49,7 @@ pub async fn handle_pairing_interaction(
 
         if is_approve {
             // Check if already paired
-            use crate::db::schema::paired_servers::dsl as ps_dsl;
+            use db::schema::paired_servers::dsl as ps_dsl;
             let existing: Option<PairedServer> = ps_dsl::paired_servers
                 .filter(ps_dsl::server_ip.eq(&req.server_ip))
                 .filter(ps_dsl::server_port.eq(req.server_port))
@@ -72,7 +72,7 @@ pub async fn handle_pairing_interaction(
                 return Ok(());
             }
 
-            let new_server = crate::db::models::NewPairedServer {
+            let new_server = db::models::NewPairedServer {
                 fcm_credential_id: req.fcm_credential_id,
                 server_ip: req.server_ip.clone(),
                 server_port: req.server_port,
@@ -146,8 +146,8 @@ pub async fn delete_server(
     db_pool: &DbPool,
     server_id: i32,
 ) -> anyhow::Result<()> {
-    use crate::db::schema::paired_servers::dsl as ps_dsl;
-    use crate::db::schema::server_channels::dsl as sc_dsl;
+    use db::schema::paired_servers::dsl as ps_dsl;
+    use db::schema::server_channels::dsl as sc_dsl;
 
     let mut conn = db_pool.get()?;
 

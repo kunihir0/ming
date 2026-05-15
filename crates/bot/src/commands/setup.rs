@@ -1,5 +1,5 @@
-use crate::db::models::GuildConfig;
-use crate::db::schema::guild_configs::dsl::{guild_configs, guild_id as gc_guild_id};
+use db::models::GuildConfig;
+use db::schema::guild_configs::dsl::{guild_configs, guild_id as gc_guild_id};
 use crate::{Context, Error};
 use diesel::prelude::*;
 use poise::serenity_prelude as serenity;

@@ -48,6 +48,18 @@ diesel::table! {
 }
 
 diesel::table! {
+    player_stats (id) {
+        id -> Integer,
+        server_id -> Integer,
+        steam_id -> Text,
+        event_type -> Text,
+        x -> Float,
+        y -> Float,
+        timestamp -> Timestamp,
+    }
+}
+
+diesel::table! {
     server_channels (server_id) {
         server_id -> Integer,
         category_id -> Nullable<Text>,
@@ -78,18 +90,53 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    sessions (token) {
+        token -> Text,
+        discord_id -> Text,
+        expires_at -> Timestamp,
+    }
+}
+
+diesel::table! {
+    user_rustplus_credentials (discord_id) {
+        discord_id -> Text,
+        gcm_android_id -> Text,
+        gcm_security_token -> Text,
+        expo_push_token -> Text,
+        rustplus_auth_token -> Text,
+    }
+}
+
+diesel::table! {
+    users (discord_id) {
+        discord_id -> Text,
+        username -> Text,
+        avatar -> Nullable<Text>,
+        created_at -> Timestamp,
+    }
+}
+
 diesel::joinable!(fcm_credentials -> guild_configs (guild_id));
 diesel::joinable!(paired_servers -> fcm_credentials (fcm_credential_id));
 diesel::joinable!(pairing_requests -> fcm_credentials (fcm_credential_id));
 diesel::joinable!(pairing_requests -> guild_configs (guild_id));
+diesel::joinable!(player_stats -> paired_servers (server_id));
 diesel::joinable!(server_channels -> paired_servers (server_id));
 diesel::joinable!(server_settings -> paired_servers (server_id));
+
+diesel::joinable!(sessions -> users (discord_id));
+diesel::joinable!(user_rustplus_credentials -> users (discord_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     fcm_credentials,
     guild_configs,
     paired_servers,
     pairing_requests,
+    player_stats,
     server_channels,
     server_settings,
+    sessions,
+    user_rustplus_credentials,
+    users,
 );

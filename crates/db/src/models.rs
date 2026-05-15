@@ -1,6 +1,6 @@
-use crate::db::schema::{
-    fcm_credentials, guild_configs, paired_servers, pairing_requests, server_channels,
-    server_settings,
+use crate::schema::{
+    fcm_credentials, guild_configs, paired_servers, pairing_requests, player_stats,
+    server_channels, server_settings, sessions, user_rustplus_credentials, users,
 };
 use diesel::prelude::*;
 
@@ -143,4 +143,82 @@ pub struct NewServerSettings {
     pub events_oilrig: i32,
     pub events_ch47: i32,
     pub events_vending: i32,
+}
+
+#[derive(Queryable, Selectable, Insertable, Identifiable, AsChangeset, Debug, Clone)]
+#[diesel(table_name = player_stats)]
+pub struct PlayerStat {
+    pub id: i32,
+    pub server_id: i32,
+    pub steam_id: String,
+    pub event_type: String,
+    pub x: f32,
+    pub y: f32,
+    pub timestamp: chrono::NaiveDateTime,
+}
+
+#[derive(Insertable, Debug, Clone)]
+#[diesel(table_name = player_stats)]
+pub struct NewPlayerStat {
+    pub server_id: i32,
+    pub steam_id: String,
+    pub event_type: String,
+    pub x: f32,
+    pub y: f32,
+}
+
+#[derive(Queryable, Selectable, Insertable, Identifiable, AsChangeset, Debug, Clone, serde::Serialize)]
+#[diesel(table_name = users)]
+#[diesel(primary_key(discord_id))]
+pub struct User {
+    pub discord_id: String,
+    pub username: String,
+    pub avatar: Option<String>,
+    pub created_at: chrono::NaiveDateTime,
+}
+
+#[derive(Insertable, Debug, Clone)]
+#[diesel(table_name = users)]
+pub struct NewUser {
+    pub discord_id: String,
+    pub username: String,
+    pub avatar: Option<String>,
+}
+
+#[derive(Queryable, Selectable, Insertable, Identifiable, AsChangeset, Debug, Clone)]
+#[diesel(table_name = sessions)]
+#[diesel(primary_key(token))]
+pub struct Session {
+    pub token: String,
+    pub discord_id: String,
+    pub expires_at: chrono::NaiveDateTime,
+}
+
+#[derive(Insertable, Debug, Clone)]
+#[diesel(table_name = sessions)]
+pub struct NewSession {
+    pub token: String,
+    pub discord_id: String,
+    pub expires_at: chrono::NaiveDateTime,
+}
+
+#[derive(Queryable, Selectable, Insertable, Identifiable, AsChangeset, Debug, Clone, serde::Serialize)]
+#[diesel(table_name = user_rustplus_credentials)]
+#[diesel(primary_key(discord_id))]
+pub struct UserRustplusCredential {
+    pub discord_id: String,
+    pub gcm_android_id: String,
+    pub gcm_security_token: String,
+    pub expo_push_token: String,
+    pub rustplus_auth_token: String,
+}
+
+#[derive(Insertable, Debug, Clone)]
+#[diesel(table_name = user_rustplus_credentials)]
+pub struct NewUserRustplusCredential {
+    pub discord_id: String,
+    pub gcm_android_id: String,
+    pub gcm_security_token: String,
+    pub expo_push_token: String,
+    pub rustplus_auth_token: String,
 }

@@ -1,6 +1,6 @@
 use crate::Data;
-use crate::db::models::{FcmCredential, PairedServer, ServerChannel, ServerSettings};
-use crate::db::schema::{
+use db::models::{FcmCredential, PairedServer, ServerChannel, ServerSettings};
+use db::schema::{
     fcm_credentials::dsl as fcm_dsl, paired_servers::dsl as ps_dsl, server_channels::dsl as sc_dsl,
     server_settings::dsl as ss_dsl,
 };
@@ -236,7 +236,7 @@ pub async fn connect_server(
 
     // Monitor Loop & Event Router setup
     let (event_tx, event_rx) = tokio::sync::broadcast::channel::<rustplus::events::RustEvent>(100);
-    let mut monitor_loop = rustplus::monitor::MonitorLoop::new(client.clone(), event_tx);
+    let mut monitor_loop = rustplus::monitor::MonitorLoop::new(client.clone(), event_tx.clone());
     monitor_loop.register(Box::new(rustplus::monitors::cargo::CargoMonitor::new()));
     monitor_loop.register(Box::new(rustplus::monitors::vending::VendingMonitor::new()));
     tokio::spawn(monitor_loop.run());
@@ -291,6 +291,12 @@ pub async fn connect_server(
         Some(tx),
     );
     tokio::spawn(router.run(event_rx));
+
+    let stat_tracker = std::sync::Arc::new(crate::services::stat_tracker::StatTracker::new(
+        server_id,
+        data.db_pool.clone(),
+    ));
+    tokio::spawn(stat_tracker.run(event_tx.subscribe()));
 
     // Fetch initial server and team info
     let server_info = match client.get_info().await {

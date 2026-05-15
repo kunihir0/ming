@@ -1,4 +1,4 @@
-use crate::proto::AppMarker;
+use crate::proto::{AppMarker, AppBroadcast};
 use std::time::{Duration, Instant};
 
 /// The single output type of the whole monitoring system.
@@ -34,6 +34,10 @@ pub enum RustEvent {
         names: Vec<String>,
     },
     MarkerSnapshot(Vec<AppMarker>),
+    ExplosionOccurred {
+        position: (f32, f32),
+    },
+    RawBroadcast(Box<AppBroadcast>),
 }
 
 /// Interface for entity modules to implement.

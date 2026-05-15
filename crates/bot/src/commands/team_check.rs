@@ -1,5 +1,5 @@
-use crate::db::models::PairedServer;
-use crate::db::schema::{fcm_credentials::dsl as fcm_dsl, paired_servers::dsl as ps_dsl};
+use db::models::PairedServer;
+use db::schema::{fcm_credentials::dsl as fcm_dsl, paired_servers::dsl as ps_dsl};
 use crate::{Context, Error};
 use diesel::prelude::*;
 use poise::serenity_prelude as serenity;

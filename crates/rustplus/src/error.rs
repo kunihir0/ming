@@ -3,6 +3,9 @@ pub enum Error {
     #[error("WebSocket error: {0}")]
     WebSocket(#[from] tokio_tungstenite::tungstenite::Error),
 
+    #[error("HTTP error: {0}")]
+    Http(#[from] reqwest::Error),
+
     #[error("Protobuf decode error: {0}")]
     Decode(#[from] prost::DecodeError),
 

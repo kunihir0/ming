@@ -1,8 +1,8 @@
 use crate::camera::Camera;
 use crate::error::{Error, Result};
 use crate::proto::{
-    AppCameraInput, AppCameraSubscribe, AppEmpty, AppMessage, AppRequest, AppSendMessage,
-    AppSetEntityValue, Vector2,
+    AppCameraInput, AppCameraSubscribe, AppEmpty, AppFlag, AppGetNexusAuth, AppMessage,
+    AppPromoteToLeader, AppRequest, AppSendMessage, AppSetEntityValue, Vector2,
 };
 use crate::ratelimit::RateLimiter;
 use futures_util::{SinkExt, StreamExt};
@@ -83,9 +83,10 @@ impl RustPlusClient {
     #[allow(clippy::too_many_lines)]
     pub async fn connect(&mut self) -> Result<()> {
         let address = if self.use_facepunch_proxy {
+            let version = crate::proxy::get_proxy_version().await?;
             format!(
-                "wss://companion-rust.facepunch.com/game/{}/{}",
-                self.server, self.port
+                "wss://companion-rust.facepunch.com/game/{}/{}?v={}",
+                self.server, self.port, version
             )
         } else {
             format!("ws://{}:{}", self.server, self.port)
@@ -447,5 +448,121 @@ impl RustPlusClient {
     #[must_use]
     pub fn get_camera(&self, identifier: &str) -> Camera {
         Camera::new(self.clone(), identifier)
+    }
+
+    /// Get the team chat history
+    ///
+    /// # Errors
+    /// Returns an error on timeout or API failure.
+    pub async fn get_team_chat(&self) -> Result<AppMessage> {
+        self.send_request_inner(AppRequest {
+            get_team_chat: Some(AppEmpty {}),
+            ..Default::default()
+        })
+        .await
+    }
+
+    /// Promote a team member to leader
+    ///
+    /// # Errors
+    /// Returns an error on timeout or API failure.
+    pub async fn promote_to_leader(&self, steam_id: u64) -> Result<AppMessage> {
+        self.send_request_inner(AppRequest {
+            promote_to_leader: Some(AppPromoteToLeader { steam_id }),
+            ..Default::default()
+        })
+        .await
+    }
+
+    /// Check subscription to an entity
+    ///
+    /// # Errors
+    /// Returns an error on timeout or API failure.
+    pub async fn check_subscription(&self, entity_id: u32) -> Result<AppMessage> {
+        self.send_request_inner(AppRequest {
+            entity_id: Some(entity_id),
+            check_subscription: Some(AppEmpty {}),
+            ..Default::default()
+        })
+        .await
+    }
+
+    /// Set subscription to an entity
+    ///
+    /// # Errors
+    /// Returns an error on timeout or API failure.
+    pub async fn set_subscription(&self, entity_id: u32, value: bool) -> Result<AppMessage> {
+        self.send_request_inner(AppRequest {
+            entity_id: Some(entity_id),
+            set_subscription: Some(AppFlag { value }),
+            ..Default::default()
+        })
+        .await
+    }
+
+    /// Get clan info
+    ///
+    /// # Errors
+    /// Returns an error on timeout or API failure.
+    pub async fn get_clan_info(&self) -> Result<AppMessage> {
+        self.send_request_inner(AppRequest {
+            get_clan_info: Some(AppEmpty {}),
+            ..Default::default()
+        })
+        .await
+    }
+
+    /// Get clan chat history
+    ///
+    /// # Errors
+    /// Returns an error on timeout or API failure.
+    pub async fn get_clan_chat(&self) -> Result<AppMessage> {
+        self.send_request_inner(AppRequest {
+            get_clan_chat: Some(AppEmpty {}),
+            ..Default::default()
+        })
+        .await
+    }
+
+    /// Send a message to clan chat
+    ///
+    /// # Errors
+    /// Returns an error on timeout or API failure.
+    pub async fn send_clan_message(&self, message: &str) -> Result<AppMessage> {
+        self.send_request_inner(AppRequest {
+            send_clan_message: Some(AppSendMessage {
+                message: message.to_string(),
+            }),
+            ..Default::default()
+        })
+        .await
+    }
+
+    /// Set clan MOTD
+    ///
+    /// # Errors
+    /// Returns an error on timeout or API failure.
+    pub async fn set_clan_motd(&self, message: &str) -> Result<AppMessage> {
+        self.send_request_inner(AppRequest {
+            set_clan_motd: Some(AppSendMessage {
+                message: message.to_string(),
+            }),
+            ..Default::default()
+        })
+        .await
+    }
+
+    /// Get Nexus Auth
+    ///
+    /// # Errors
+    /// Returns an error on timeout or API failure.
+    pub async fn get_nexus_auth(&self, app_key: &str) -> Result<AppMessage> {
+        self.send_request_inner(AppRequest {
+            get_nexus_auth: Some(AppGetNexusAuth {
+                app_key: app_key.to_string(),
+            }),
+            ..Default::default()
+        })
+        .await
     }
 }

@@ -6,5 +6,6 @@ pub mod fcm;
 pub mod management;
 pub mod map;
 pub mod rustplus_client;
+pub mod stat_tracker;
 pub mod steam;
 pub mod vending_subs;

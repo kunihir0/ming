@@ -1,12 +1,12 @@
 #![allow(clippy::pedantic)]
 #![allow(clippy::items_after_statements)]
 
-use crate::db::DbPool;
-use crate::db::models::ServerChannel as DbServerChannel;
-use crate::db::models::{GuildConfig, PairedServer, ServerChannel};
-use crate::db::schema::paired_servers::dsl as ps_dsl;
-use crate::db::schema::server_channels::dsl as sc_dsl;
-use crate::db::schema::server_channels::dsl::server_channels;
+use db::DbPool;
+use db::models::ServerChannel as DbServerChannel;
+use db::models::{GuildConfig, PairedServer, ServerChannel};
+use db::schema::paired_servers::dsl as ps_dsl;
+use db::schema::server_channels::dsl as sc_dsl;
+use db::schema::server_channels::dsl::server_channels;
 use diesel::prelude::*;
 use poise::serenity_prelude as serenity;
 use rustplus::proto::{AppInfo, AppTeamInfo};
@@ -73,7 +73,7 @@ pub async fn handle_new_paired_server(
     guild_id_str: &str,
     server: &PairedServer,
 ) -> anyhow::Result<()> {
-    use crate::db::schema::guild_configs::dsl::guild_configs;
+    use db::schema::guild_configs::dsl::guild_configs;
 
     let mut conn = db_pool.get()?;
 
@@ -181,8 +181,8 @@ pub async fn handle_new_paired_server(
     );
 
     // Initialize Default Settings
-    use crate::db::models::NewServerSettings;
-    use crate::db::schema::server_settings::dsl::server_settings;
+    use db::models::NewServerSettings;
+    use db::schema::server_settings::dsl::server_settings;
     let default_settings = NewServerSettings {
         server_id: server.id,
         in_game_prefix: "!".to_string(),

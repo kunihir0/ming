@@ -1,4 +1,4 @@
-use crate::db::models::NewFcmCredential;
+use db::models::NewFcmCredential;
 use crate::{Context, Error};
 use diesel::prelude::*;
 
@@ -35,12 +35,12 @@ pub async fn add(
         expire_date,
     };
 
-    use crate::db::schema::fcm_credentials::dsl::fcm_credentials;
+    use db::schema::fcm_credentials::dsl::fcm_credentials;
     let mut conn = ctx.data().db_pool.get()?;
 
     // Check if guild_configs exists first
-    use crate::db::models::GuildConfig;
-    use crate::db::schema::guild_configs::dsl::guild_configs;
+    use db::models::GuildConfig;
+    use db::schema::guild_configs::dsl::guild_configs;
     let config_exists = guild_configs
         .find(&guild_id)
         .first::<GuildConfig>(&mut conn)
@@ -57,9 +57,9 @@ pub async fn add(
         .execute(&mut conn)?;
 
     // Fetch the newly created credential
-    use crate::db::models::FcmCredential;
+    use db::models::FcmCredential;
     let cred = fcm_credentials
-        .order(crate::db::schema::fcm_credentials::dsl::id.desc())
+        .order(db::schema::fcm_credentials::dsl::id.desc())
         .first::<FcmCredential>(&mut conn)?;
 
     // Start the FCM listener

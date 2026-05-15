@@ -2,7 +2,7 @@ pub mod pop;
 pub mod vending;
 
 use crate::Data;
-use crate::db::models::ServerSettings;
+use db::models::ServerSettings;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;

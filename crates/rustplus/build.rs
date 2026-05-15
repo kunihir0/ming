@@ -5,7 +5,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         env::set_var("PROTOC", protoc_bin_vendored::protoc_bin_path()?);
     }
 
-    prost_build::compile_protos(&["proto/rustplus.proto"], &["proto/"])?;
+    let mut config = prost_build::Config::new();
+    config.type_attribute(".", "#[derive(serde::Serialize, serde::Deserialize)]");
+    config.compile_protos(&["proto/rustplus.proto"], &["proto/"])?;
 
     println!("cargo:rerun-if-changed=proto/");
 

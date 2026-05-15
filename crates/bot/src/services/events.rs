@@ -291,6 +291,10 @@ impl EventRouter {
                         }
                     }
                 }
+                RustEvent::ExplosionOccurred { position: _ } => {
+                    // Log or handle explosion in Discord if needed
+                }
+                RustEvent::RawBroadcast(_) => {}
             }
         }
     }

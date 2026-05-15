@@ -2,21 +2,17 @@
 #![allow(clippy::manual_unwrap_or_default, clippy::manual_unwrap_or)]
 
 pub mod commands;
-pub mod db;
 pub mod gcommands;
 pub mod services;
 pub mod utils;
 
 use anyhow::Context as _;
 use db::DbPool;
-use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
 use poise::serenity_prelude as serenity;
 use std::env;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::info;
-
-pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
 
 #[derive(Clone)]
 pub struct Data {
@@ -49,8 +45,7 @@ async fn main() -> anyhow::Result<()> {
 
     {
         let mut conn = db_pool.get()?;
-        conn.run_pending_migrations(MIGRATIONS)
-            .map_err(|e| anyhow::anyhow!("Migration error: {e}"))?;
+        db::run_migrations(&mut conn)?;
         info!("Database migrations applied.");
     }
 

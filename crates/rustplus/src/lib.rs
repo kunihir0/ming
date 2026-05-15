@@ -7,6 +7,7 @@ pub mod error;
 pub mod events;
 pub mod monitor;
 pub mod monitors;
+pub(crate) mod proxy;
 pub(crate) mod ratelimit;
 
 pub mod proto {

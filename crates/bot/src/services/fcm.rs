@@ -1,5 +1,5 @@
-use crate::db::DbPool;
-use crate::db::models::{FcmCredential, GuildConfig, NewPairingRequest, PairedServer};
+use db::DbPool;
+use db::models::{FcmCredential, GuildConfig, NewPairingRequest, PairedServer};
 use diesel::prelude::*;
 use poise::serenity_prelude as serenity;
 use push_receiver::PushReceiver;
@@ -20,7 +20,7 @@ pub async fn boot_existing_receivers<S: std::hash::BuildHasher>(
     ctx: serenity::Context,
     receivers: Arc<Mutex<HashMap<i32, JoinHandle<()>, S>>>,
 ) -> anyhow::Result<()> {
-    use crate::db::schema::fcm_credentials::dsl::fcm_credentials;
+    use db::schema::fcm_credentials::dsl::fcm_credentials;
 
     let mut conn = db_pool.get()?;
     let creds = fcm_credentials.load::<FcmCredential>(&mut conn)?;
@@ -89,9 +89,9 @@ async fn handle_fcm_message(
     db_pool: &DbPool,
     ctx: &serenity::Context,
 ) -> anyhow::Result<()> {
-    use crate::db::schema::guild_configs::dsl as gc_dsl;
-    use crate::db::schema::paired_servers::dsl as ps_dsl;
-    use crate::db::schema::pairing_requests::dsl as pr_dsl;
+    use db::schema::guild_configs::dsl as gc_dsl;
+    use db::schema::paired_servers::dsl as ps_dsl;
+    use db::schema::pairing_requests::dsl as pr_dsl;
 
     let app_data = &payload.app_data;
 
