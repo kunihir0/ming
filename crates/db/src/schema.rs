@@ -18,6 +18,7 @@ diesel::table! {
         manual_chat_channel_id -> Nullable<Text>,
         manual_alerts_channel_id -> Nullable<Text>,
         manual_cctv_channel_id -> Nullable<Text>,
+        manual_ai_channel_id -> Nullable<Text>,
         in_game_prefix -> Text,
         management_channel_id -> Nullable<Text>,
     }
@@ -69,6 +70,7 @@ diesel::table! {
         dashboard_message_id -> Nullable<Text>,
         config_channel_id -> Nullable<Text>,
         config_message_id -> Nullable<Text>,
+        ai_channel_id -> Nullable<Text>,
         cctv_channel_id -> Nullable<Text>,
         cctv_message_id -> Nullable<Text>,
     }

@@ -121,23 +121,54 @@ pub async fn handle_discord_message(
     let channel_id_str = msg.channel_id.get().to_string();
 
     let server_channel: Option<ServerChannel> = sc_dsl::server_channels
-        .filter(sc_dsl::chat_channel_id.eq(&channel_id_str))
+        .filter(sc_dsl::chat_channel_id.eq(&channel_id_str).or(sc_dsl::ai_channel_id.eq(&channel_id_str)))
         .first::<ServerChannel>(&mut conn)
         .optional()?;
 
     if let Some(sc) = server_channel {
-        let settings: ServerSettings = ss_dsl::server_settings
-            .find(sc.server_id)
-            .first(&mut conn)?;
+        if Some(channel_id_str.clone()) == sc.ai_channel_id {
+            // Forward to AI Engine
+            let server_id = sc.server_id;
+            let text = msg.content.clone();
+            
+            // We need to fetch vending machines via the map service.
+            let map_size = data.map_service.get_map_size(server_id, data).await.unwrap_or(4000);
+            let vms_result = data.map_service.get_vending_machines(server_id, data).await;
+            
+            let http = _ctx.http.clone();
+            let channel_id = msg.channel_id;
 
-        if settings.bridge_discord_to_rust == 0 {
+            tokio::spawn(async move {
+                let _ = channel_id.broadcast_typing(&http).await;
+                
+                let vms = vms_result.unwrap_or_default();
+
+                match crate::services::ai::chat_with_tools(server_id, &text, map_size, &vms).await {
+                    Ok(response_text) => {
+                        let _ = channel_id.say(&http, response_text).await;
+                    }
+                    Err(e) => {
+                        let _ = channel_id.say(&http, format!("AI Error: {}", e)).await;
+                    }
+                }
+            });
+            
             return Ok(());
-        }
+        } else if Some(channel_id_str) == sc.chat_channel_id {
+            // Standard Chat Bridge
+            let settings: ServerSettings = ss_dsl::server_settings
+                .find(sc.server_id)
+                .first(&mut conn)?;
 
-        let queues = data.chat_queues.lock().await;
-        if let Some(tx) = queues.get(&sc.server_id) {
-            let rust_msg = format!("[Discord] {}: {}", msg.author.name, msg.content);
-            let _ = tx.send(rust_msg).await;
+            if settings.bridge_discord_to_rust == 0 {
+                return Ok(());
+            }
+
+            let queues = data.chat_queues.lock().await;
+            if let Some(tx) = queues.get(&sc.server_id) {
+                let rust_msg = format!("[Discord] {}: {}", msg.author.name, msg.content);
+                let _ = tx.send(rust_msg).await;
+            }
         }
     }
 

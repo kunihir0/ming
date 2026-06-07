@@ -25,6 +25,7 @@ pub struct Data {
     pub gcommands: Arc<gcommands::GCommandRegistry>,
     pub map_service: Arc<services::map::MapService>,
     pub sub_store: Arc<services::vending_subs::SubStore>,
+    pub discord_http: Arc<poise::serenity_prelude::Http>,
 }
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -143,6 +144,7 @@ async fn main() -> anyhow::Result<()> {
                         sub_store: Arc::new(
                             services::vending_subs::SubStore::load("vending_subs.json").await,
                         ),
+                        discord_http: ctx.http.clone(),
                     };
 
                     services::fcm::boot_existing_receivers(
@@ -156,6 +158,12 @@ async fn main() -> anyhow::Result<()> {
                         services::dashboard::backfill_cctv_channels(&data.db_pool, ctx).await
                     {
                         tracing::error!("Failed to backfill CCTV channels: {}", e);
+                    }
+
+                    if let Err(e) =
+                        services::dashboard::backfill_ai_channels(&data.db_pool, ctx).await
+                    {
+                        tracing::error!("Failed to backfill AI Assistant channels: {}", e);
                     }
 
                     services::rustplus_client::boot_existing_connections(&data, ctx.clone())
