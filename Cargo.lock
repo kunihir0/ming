@@ -2157,6 +2157,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "minibot"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "db",
+ "diesel",
+ "dotenvy",
+ "poise",
+ "push-receiver",
+ "regex",
+ "rustls 0.23.37",
+ "rustplus",
+ "serde",
+ "serde_json",
+ "serenity",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "miniz_oxide"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"

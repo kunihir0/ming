@@ -17,8 +17,9 @@ The project is structured as a Cargo workspace with three main crates to enforce
 1. **`crates/push-receiver`:** A native Rust port of the FCM (Firebase Cloud Messaging) protocol. It intercepts Rust+ server pairing notifications directly from Google's push servers.
 2. **`crates/rustplus`:** A native Rust WebSocket client for the Rust+ companion app protocol. It handles persistent server connections, real-time events, rate limiting, and camera frame rendering.
 3. **`crates/bot`:** The Discord bot application. Built using `poise` and `serenity`, it manages user interactions and uses `diesel` with SQLite for relational state management.
-4. **`crates/api`:** The backend HTTP and WebSocket API server. Exposes the bot's capabilities and map data to the frontend dashboard.
-5. **`web`:** The interactive frontend dashboard built with Vue 3 and Vite, providing a rich UI for the tactical map, team chat, and remote camera feeds.
+4. **`crates/minibot`:** A lightweight, high-performance in-game bot built for quick team chat interactions, advanced map marker queries (like vending machine searches), and returning rich Discord embeds/native Rust icons.
+5. **`crates/api`:** The backend HTTP and WebSocket API server. Exposes the bot's capabilities and map data to the frontend dashboard.
+6. **`web`:** The interactive frontend dashboard built with Vue 3 and Vite, providing a rich UI for the tactical map, team chat, and remote camera feeds.
 
 ## Quick Start
 
@@ -37,3 +38,14 @@ The project is structured as a Cargo workspace with three main crates to enforce
 5. Type `/setup` in your server to configure the channel auto-creation preferences.
 6. Type `/credentials add` and fill out the secure modal with your GCM/FCM credentials.
 7. Pair a server in the Rust+ app on your phone. The bot will instantly intercept the pairing and automatically generate your interactive server dashboard!
+
+---
+
+## Minibot Features
+
+If you are running the new standalone Minibot (`cargo run -p minibot`):
+
+- **Vending Machine Search**: Find items globally with `@v search <item>` in team chat. Includes smart grouping, pagination, and native Rust UI icons in-game.
+- **Discord Integration**: Rich embeds with dynamic item thumbnails (via CarbonMod CDN) when searching from Discord (`/v search`).
+- **Team Chat Bridging**: Seamlessly relays messages and commands directly to and from your Rust team chat.
+- **FCM Interception**: Instantly detects and pairs with Rust servers via Google's Push notification servers.

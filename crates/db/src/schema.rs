@@ -11,6 +11,18 @@ diesel::table! {
 }
 
 diesel::table! {
+    vending_subscriptions (id) {
+        id -> Integer,
+        discord_id -> Nullable<Text>,
+        steam_id -> Nullable<Text>,
+        server_id -> Integer,
+        item_id -> Integer,
+        item_name -> Text,
+        max_price -> Nullable<Integer>,
+    }
+}
+
+diesel::table! {
     guild_configs (guild_id) {
         guild_id -> Text,
         setup_mode -> Text,
@@ -127,6 +139,7 @@ diesel::joinable!(player_stats -> paired_servers (server_id));
 diesel::joinable!(server_channels -> paired_servers (server_id));
 diesel::joinable!(server_settings -> paired_servers (server_id));
 
+diesel::joinable!(vending_subscriptions -> paired_servers (server_id));
 diesel::joinable!(sessions -> users (discord_id));
 diesel::joinable!(user_rustplus_credentials -> users (discord_id));
 
@@ -141,4 +154,5 @@ diesel::allow_tables_to_appear_in_same_query!(
     sessions,
     user_rustplus_credentials,
     users,
+    vending_subscriptions,
 );

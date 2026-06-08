@@ -1,6 +1,7 @@
 use crate::schema::{
     fcm_credentials, guild_configs, paired_servers, pairing_requests, player_stats,
     server_channels, server_settings, sessions, user_rustplus_credentials, users,
+    vending_subscriptions,
 };
 use diesel::prelude::*;
 
@@ -223,4 +224,28 @@ pub struct NewUserRustplusCredential {
     pub gcm_security_token: String,
     pub expo_push_token: String,
     pub rustplus_auth_token: String,
+}
+
+#[derive(Queryable, Selectable, Insertable, Identifiable, AsChangeset, Associations, Debug, Clone)]
+#[diesel(belongs_to(PairedServer, foreign_key = server_id))]
+#[diesel(table_name = vending_subscriptions)]
+pub struct VendingSubscription {
+    pub id: i32,
+    pub discord_id: Option<String>,
+    pub steam_id: Option<String>,
+    pub server_id: i32,
+    pub item_id: i32,
+    pub item_name: String,
+    pub max_price: Option<i32>,
+}
+
+#[derive(Insertable, Debug, Clone)]
+#[diesel(table_name = vending_subscriptions)]
+pub struct NewVendingSubscription {
+    pub discord_id: Option<String>,
+    pub steam_id: Option<String>,
+    pub server_id: i32,
+    pub item_id: i32,
+    pub item_name: String,
+    pub max_price: Option<i32>,
 }
