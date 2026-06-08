@@ -48,9 +48,21 @@ async fn search(
     server_id: i32,
     #[description = "Search type (default: Buy)"]
     search_type: Option<SearchType>,
-    #[description = "Item query (regex supported)"]
+    #[description = "Item 1"]
     #[autocomplete = "crate::autocomplete::autocomplete_item"]
-    query: String,
+    query1: String,
+    #[description = "Item 2"]
+    #[autocomplete = "crate::autocomplete::autocomplete_item"]
+    query2: Option<String>,
+    #[description = "Item 3"]
+    #[autocomplete = "crate::autocomplete::autocomplete_item"]
+    query3: Option<String>,
+    #[description = "Item 4"]
+    #[autocomplete = "crate::autocomplete::autocomplete_item"]
+    query4: Option<String>,
+    #[description = "Item 5"]
+    #[autocomplete = "crate::autocomplete::autocomplete_item"]
+    query5: Option<String>,
 ) -> Result<(), Error> {
     ctx.defer().await?;
     let uctx = discord_context(ctx.data(), server_id, ctx.author().id.get(), ctx.channel_id());
@@ -61,8 +73,15 @@ async fn search(
         _ => "buy",
     };
 
-    let args = [type_str, query.as_str()];
-    ctx.say(format!("Searching for {}...", query)).await?;
+    let mut all_queries = vec![query1];
+    if let Some(q) = query2 { all_queries.push(q); }
+    if let Some(q) = query3 { all_queries.push(q); }
+    if let Some(q) = query4 { all_queries.push(q); }
+    if let Some(q) = query5 { all_queries.push(q); }
+    let combined_query = all_queries.join(", ");
+
+    let args = [type_str, combined_query.as_str()];
+    ctx.say(format!("Searching for {}...", combined_query)).await?;
     match crate::framework::UnifiedCommand::execute(&cmd, &uctx, &args).await {
         Ok(response) => {
             let pages = response.pages;

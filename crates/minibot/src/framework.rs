@@ -78,6 +78,57 @@ impl<'a> UnifiedContext<'a> {
         }
         Ok(())
     }
+    pub async fn resolve_emoji(&self, shortname: &str) -> String {
+        match &self.reply_target {
+            ReplyTarget::InGameChat { .. } => format!(":{}: ", shortname),
+            ReplyTarget::Discord { channel_id } => {
+                let clean_name = shortname.replace(".", "_").replace("-", "_");
+                
+                // Get the guild ID from the channel
+                let channel = match channel_id.to_channel(&self.data.discord_http).await {
+                    Ok(c) => c,
+                    Err(_) => return format!("[{}] ", shortname),
+                };
+                
+                let guild_id = match channel.guild() {
+                    Some(g) => g.guild_id,
+                    None => return format!("[{}] ", shortname), // Not in a guild
+                };
+                
+                // Fetch emojis
+                let emojis = match guild_id.emojis(&self.data.discord_http).await {
+                    Ok(e) => e,
+                    Err(_) => return format!("[{}] ", shortname),
+                };
+                
+                if let Some(emoji) = emojis.iter().find(|e| e.name == clean_name) {
+                    return format!("<:{}:{}> ", emoji.name, emoji.id);
+                }
+                
+                // Need to upload
+                let url = format!("https://cdn.carbonmod.gg/items/{}.png", shortname);
+                let img_bytes = match reqwest::get(&url).await {
+                    Ok(r) => match r.bytes().await {
+                        Ok(b) => b,
+                        Err(_) => return format!("[{}] ", shortname),
+                    },
+                    Err(_) => return format!("[{}] ", shortname),
+                };
+                
+                use base64::Engine;
+                let b64 = base64::engine::general_purpose::STANDARD.encode(&img_bytes);
+                let data_uri = format!("data:image/png;base64,{}", b64);
+                
+                match guild_id.create_emoji(&self.data.discord_http, &clean_name, &data_uri).await {
+                    Ok(new_emoji) => format!("<:{}:{}> ", new_emoji.name, new_emoji.id),
+                    Err(e) => {
+                        tracing::warn!("Failed to create emoji {}: {}", clean_name, e);
+                        format!("[{}] ", shortname)
+                    }
+                }
+            }
+        }
+    }
 }
 
 use std::future::Future;

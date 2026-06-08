@@ -19,3 +19,5 @@ rustls.workspace = true
 db = { path = "../db" }
 rustplus = { path = "../rustplus" }
 push-receiver = { path = "../push-receiver" }
+base64.workspace = true
+reqwest.workspace = true

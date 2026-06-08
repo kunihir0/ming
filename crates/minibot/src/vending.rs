@@ -39,15 +39,35 @@ impl UnifiedCommand for VendingSearchCommand {
                 return Ok(crate::framework::CommandResponse::text(vec!["Usage: v search [buy|sell] <item name or regex>".to_string()]));
             }
 
-            let query = args[query_start..].join(" ");
-            let matches = search_items_smart(&query);
+            let is_discord = matches!(ctx.reply_target, crate::framework::ReplyTarget::Discord { .. });
 
-            if matches.is_empty() {
-                return Ok(crate::framework::CommandResponse::text(vec![format!("No items found matching '{}'.", query)]));
+            let query_joined = args[query_start..].join(" ");
+            let queries: Vec<&str> = if is_discord {
+                query_joined
+                    .split(',')
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            } else {
+                let trimmed = query_joined.trim();
+                if trimmed.is_empty() {
+                    vec![]
+                } else {
+                    vec![trimmed]
+                }
+            };
+                
+            let mut target_ids = std::collections::HashSet::new();
+            for q in &queries {
+                let matches = search_items_smart(q);
+                if !matches.is_empty() {
+                    target_ids.insert(matches[0].0);
+                }
             }
 
-            let (target_id, _target_name, target_shortname) = &matches[0];
-            let target_id_str = target_id.to_string();
+            if target_ids.is_empty() {
+                return Ok(crate::framework::CommandResponse::text(vec![format!("No items found matching '{}'.", queries.join(", "))]));
+            }
 
             let mut clients = ctx.data.rustplus_clients.lock().await;
             let client = match clients.get_mut(&ctx.server_id) {
@@ -57,37 +77,59 @@ impl UnifiedCommand for VendingSearchCommand {
                 }
             };
 
-            let map_size = match client.get_info().await {
-                Ok(res) => res.response.and_then(|r| r.info).map(|i| i.map_size).unwrap_or(4500),
-                Err(_) => 4500, // fallback
+            let mut markers_res = None;
+            for _ in 0..3 {
+                match client.get_map_markers().await {
+                    Ok(resp) => {
+                        markers_res = Some(resp.response.unwrap().map_markers.unwrap().markers);
+                        break;
+                    }
+                    Err(_) => {
+                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    }
+                }
+            }
+
+            let markers = match markers_res {
+                Some(m) => m,
+                None => return Ok(crate::framework::CommandResponse::text(vec!["Failed to fetch map markers".to_string()])),
             };
 
-            // Fetch map markers
-            let markers = match client.get_map_markers().await {
-                Ok(res) => res.response
-                    .and_then(|r| r.map_markers)
-                    .map(|m| m.markers)
-                    .unwrap_or_default(),
-                Err(rustplus::Error::Api(ref msg)) if msg == "not_found" => {
-                    return Ok(crate::framework::CommandResponse::text(vec!["Rust+ API returned 'not_found'. This usually means your player token has expired (e.g. after a wipe). Please open Rust and pair this server again from the Rust+ menu!".to_string()]));
+            let mut map_size_res = None;
+            for _ in 0..3 {
+                match client.get_info().await {
+                    Ok(info) => {
+                        map_size_res = Some(info.response.unwrap().info.unwrap().map_size);
+                        break;
+                    }
+                    Err(_) => {
+                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    }
                 }
-                Err(e) => return Err(e.into()),
+            }
+
+            let map_size = match map_size_res {
+                Some(s) => s as f32,
+                None => return Ok(crate::framework::CommandResponse::text(vec!["Failed to fetch map info".to_string()])),
             };
 
             struct MatchEntry {
                 group_name: String,
                 group_short: Option<String>,
+                target_name: String,
                 cost: i32,
-                text: String,
+                quantity: i32,
+                pos: String,
+                stock: i32,
             }
 
             let mut matches_list = Vec::new();
             for marker in markers {
                 for order in marker.sell_orders {
                     let is_match = if search_type == "sell" {
-                        order.currency_id == *target_id
+                        target_ids.contains(&order.currency_id)
                     } else {
-                        order.item_id == *target_id
+                        target_ids.contains(&order.item_id)
                     };
 
                     if is_match && order.amount_in_stock > 0 {
@@ -96,21 +138,23 @@ impl UnifiedCommand for VendingSearchCommand {
                         } else {
                             (crate::items::get_item_name(order.currency_id), crate::items::get_item_shortname(order.currency_id))
                         };
-
-                        let pos = get_grid_pos(marker.x, marker.y, map_size);
-                        let cost = order.cost_per_item;
                         
-                        let text = if search_type == "buy" {
-                            format!("{}x {} | {}({})", order.quantity, cost, pos, order.amount_in_stock)
+                        let target_name = if search_type == "sell" {
+                            crate::items::get_item_name(order.currency_id)
                         } else {
-                            format!("{}x {} | {}({})", cost, order.quantity, pos, order.amount_in_stock)
+                            crate::items::get_item_name(order.item_id)
                         };
 
+                        let pos = get_grid_pos(marker.x, marker.y, map_size as u32);
+                        
                         matches_list.push(MatchEntry {
                             group_name,
                             group_short,
-                            cost,
-                            text,
+                            target_name,
+                            cost: order.cost_per_item,
+                            quantity: order.quantity,
+                            pos,
+                            stock: order.amount_in_stock,
                         });
                     }
                 }
@@ -122,49 +166,99 @@ impl UnifiedCommand for VendingSearchCommand {
                 // Sort by cost ascending
                 matches_list.sort_by_key(|m| m.cost);
 
-                let mut groups: std::collections::BTreeMap<(String, Option<String>), Vec<String>> = std::collections::BTreeMap::new();
+                let mut groups: std::collections::BTreeMap<(String, Option<String>), Vec<(i32, i32, String, i32, String)>> = std::collections::BTreeMap::new();
                 for m in matches_list {
-                    groups.entry((m.group_name, m.group_short)).or_default().push(m.text);
+                    groups.entry((m.group_name, m.group_short)).or_default().push((m.cost, m.quantity, m.pos, m.stock, m.target_name));
                 }
 
-                let (max_len, use_emoji) = match &ctx.reply_target {
-                    crate::framework::ReplyTarget::InGameChat { .. } => (100, true),
-                    crate::framework::ReplyTarget::Discord { .. } => (1000, false),
-                };
+                let max_len = if is_discord { 3500 } else { 100 };
                 
                 let mut pages = Vec::new();
                 for ((group_name, group_short), entries) in groups {
-                    let group_display = if use_emoji && group_short.is_some() {
-                        format!(":{}: ", group_short.unwrap())
+                    let group_display = if let Some(short) = group_short {
+                        let emoji = ctx.resolve_emoji(&short).await;
+                        if is_discord {
+                            if search_type == "buy" {
+                                format!("{} **Costs {}**\n", emoji.trim(), group_name)
+                            } else {
+                                format!("{} **Pays {}**\n", emoji.trim(), group_name)
+                            }
+                        } else {
+                            emoji
+                        }
                     } else {
-                        format!("[{}] ", group_name)
+                        if is_discord {
+                            if search_type == "buy" {
+                                format!("**Costs {}**\n", group_name)
+                            } else {
+                                format!("**Pays {}**\n", group_name)
+                            }
+                        } else {
+                            format!("[{}] ", group_name)
+                        }
                     };
                     
                     let mut current_page = group_display.clone();
                     let prefix_len = current_page.len();
 
-                    for entry in entries {
-                        let needs_comma = current_page.len() > prefix_len;
-                        let extra = if needs_comma { 2 } else { 0 };
-
-                        if current_page.len() + entry.len() + extra > max_len {
-                            pages.push(current_page.clone());
-                            current_page = format!("{}{}", group_display, entry);
-                        } else {
-                            if needs_comma {
-                                current_page.push_str(", ");
+                    for (cost, qty, pos, stock, target_name) in entries {
+                        let formatted_entry = if is_discord {
+                            if search_type == "buy" {
+                                format!("> `{}x {}` for `{}x {}` | **{}** ({} left)\n", qty, target_name, cost, group_name, pos, stock)
+                            } else {
+                                format!("> `{}x {}` for `{}x {}` | **{}** ({} left)\n", cost, target_name, qty, group_name, pos, stock)
                             }
-                            current_page.push_str(&entry);
+                        } else {
+                            if search_type == "buy" {
+                                format!("{}x {} | {}({})", qty, cost, pos, stock)
+                            } else {
+                                format!("{}x {} | {}({})", cost, qty, pos, stock)
+                            }
+                        };
+
+                        let separator = if is_discord { "" } else { ", " };
+                        let needs_separator = current_page.len() > prefix_len;
+                        let extra = if needs_separator { separator.len() } else { 0 };
+
+                        if current_page.len() + formatted_entry.len() + extra > max_len {
+                            pages.push(current_page.clone());
+                            current_page = format!("{}{}", group_display, formatted_entry);
+                        } else {
+                            if needs_separator {
+                                current_page.push_str(separator);
+                            }
+                            current_page.push_str(&formatted_entry);
                         }
                     }
-                    if current_page.len() > prefix_len {
+                    if is_discord {
+                        current_page.push('\n');
+                    }
+                    if current_page.len() > prefix_len + if is_discord { 1 } else { 0 } {
                         pages.push(current_page);
                     }
                 }
                 
+                // For Discord, we can just join pages if they fit in 3500.
+                if is_discord && pages.len() > 1 {
+                    let mut combined_pages = Vec::new();
+                    let mut current = String::new();
+                    for page in pages {
+                        if current.len() + page.len() > 3500 {
+                            combined_pages.push(current);
+                            current = page;
+                        } else {
+                            current.push_str(&page);
+                        }
+                    }
+                    if !current.is_empty() {
+                        combined_pages.push(current);
+                    }
+                    pages = combined_pages;
+                }
+                
                 Ok(crate::framework::CommandResponse {
                     pages,
-                    thumbnail_url: Some(format!("https://cdn.carbonmod.gg/items/{}.png", target_shortname)),
+                    thumbnail_url: None,
                 })
             }
         })
