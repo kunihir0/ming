@@ -1,7 +1,8 @@
 use crate::schema::{
     fcm_credentials, guild_configs, paired_servers, pairing_requests, player_stats,
     server_channels, server_settings, sessions, user_rustplus_credentials, users,
-    vending_subscriptions,
+    vending_subscriptions, track_groups, tracked_players, player_name_history,
+    track_notifications_config,
 };
 use diesel::prelude::*;
 
@@ -249,3 +250,95 @@ pub struct NewVendingSubscription {
     pub item_name: String,
     pub max_price: Option<i32>,
 }
+
+#[derive(Queryable, Selectable, Insertable, Identifiable, AsChangeset, Associations, Debug, Clone)]
+#[diesel(belongs_to(PairedServer, foreign_key = server_id))]
+#[diesel(table_name = track_groups)]
+pub struct TrackGroup {
+    pub id: i32,
+    pub server_id: i32,
+    pub name: String,
+    pub color: Option<String>,
+    pub created_at: chrono::NaiveDateTime,
+}
+
+#[derive(Insertable, Debug, Clone)]
+#[diesel(table_name = track_groups)]
+pub struct NewTrackGroup {
+    pub server_id: i32,
+    pub name: String,
+    pub color: Option<String>,
+}
+
+#[derive(Queryable, Selectable, Insertable, Identifiable, AsChangeset, Associations, Debug, Clone)]
+#[diesel(belongs_to(TrackGroup, foreign_key = group_id))]
+#[diesel(belongs_to(PairedServer, foreign_key = server_id))]
+#[diesel(table_name = tracked_players)]
+pub struct TrackedPlayer {
+    pub id: i32,
+    pub group_id: Option<i32>,
+    pub server_id: i32,
+    pub steam_id: String,
+    pub bm_player_id: Option<String>,
+    pub last_known_name: Option<String>,
+    pub last_known_server_id: Option<String>,
+    pub is_online: i32,
+    pub last_seen: Option<chrono::NaiveDateTime>,
+    pub created_at: chrono::NaiveDateTime,
+}
+
+#[derive(Insertable, Debug, Clone)]
+#[diesel(table_name = tracked_players)]
+pub struct NewTrackedPlayer {
+    pub group_id: Option<i32>,
+    pub server_id: i32,
+    pub steam_id: String,
+    pub bm_player_id: Option<String>,
+    pub last_known_name: Option<String>,
+    pub last_known_server_id: Option<String>,
+    pub is_online: i32,
+}
+
+#[derive(Queryable, Selectable, Insertable, Identifiable, AsChangeset, Associations, Debug, Clone)]
+#[diesel(belongs_to(TrackedPlayer, foreign_key = tracked_player_id))]
+#[diesel(table_name = player_name_history)]
+pub struct PlayerNameHistory {
+    pub id: i32,
+    pub tracked_player_id: i32,
+    pub name: String,
+    pub seen_at: chrono::NaiveDateTime,
+}
+
+#[derive(Insertable, Debug, Clone)]
+#[diesel(table_name = player_name_history)]
+pub struct NewPlayerNameHistory {
+    pub tracked_player_id: i32,
+    pub name: String,
+}
+
+#[derive(Queryable, Selectable, Insertable, Identifiable, AsChangeset, Associations, Debug, Clone)]
+#[diesel(belongs_to(PairedServer, foreign_key = server_id))]
+#[diesel(table_name = track_notifications_config)]
+pub struct TrackNotificationsConfig {
+    pub id: i32,
+    pub server_id: i32,
+    pub discord_channel_id: Option<String>,
+    pub dashboard_message_id: Option<String>,
+    pub in_game_alerts: i32,
+    pub alert_on_join: i32,
+    pub alert_on_leave: i32,
+    pub alert_on_name_change: i32,
+}
+
+#[derive(Insertable, Debug, Clone)]
+#[diesel(table_name = track_notifications_config)]
+pub struct NewTrackNotificationsConfig {
+    pub server_id: i32,
+    pub discord_channel_id: Option<String>,
+    pub dashboard_message_id: Option<String>,
+    pub in_game_alerts: i32,
+    pub alert_on_join: i32,
+    pub alert_on_leave: i32,
+    pub alert_on_name_change: i32,
+}
+

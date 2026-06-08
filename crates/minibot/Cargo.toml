@@ -21,3 +21,7 @@ rustplus = { path = "../rustplus" }
 push-receiver = { path = "../push-receiver" }
 base64.workspace = true
 reqwest.workspace = true
+scraper.workspace = true
+moka.workspace = true
+chrono.workspace = true
+rand.workspace = true

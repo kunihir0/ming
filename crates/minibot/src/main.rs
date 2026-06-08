@@ -5,9 +5,11 @@ mod framework;
 mod items;
 mod listener;
 mod vending;
+pub mod tracking;
 
 use crate::connection_manager::ConnectionManager;
 use crate::framework::{CommandRegistry, MinibotData, ReplyTarget, UnifiedContext};
+use crate::tracking::commands::{track, TrackCommand};
 use crate::vending::{VendingListCommand, VendingSearchCommand, VendingSubsCommand};
 use anyhow::Context as _;
 use diesel::prelude::*;
@@ -496,7 +498,7 @@ async fn main() -> anyhow::Result<()> {
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
-            commands: vec![v(), server(), credentials(), set_reply_channel()],
+            commands: vec![v(), server(), credentials(), set_reply_channel(), track()],
             ..Default::default()
         })
         .setup(move |ctx, _ready, framework| {
@@ -509,6 +511,7 @@ async fn main() -> anyhow::Result<()> {
                 registry.register(VendingSearchCommand);
                 registry.register(VendingSubsCommand);
                 registry.register(VendingListCommand);
+                registry.register(TrackCommand);
                 let registry = Arc::new(registry);
 
                 let data = Arc::new(MinibotData {
@@ -535,6 +538,10 @@ async fn main() -> anyhow::Result<()> {
                 // Boot existing connections
                 conn_mgr.boot().await;
                 conn_mgr.clone().start_watchdog();
+
+                // Start tracking watchdog
+                let tracking_watchdog = Arc::new(crate::tracking::watchdog::TrackerWatchdog::new(db_pool.clone(), ctx.http.clone()));
+                tokio::spawn(tracking_watchdog.start());
 
                 // Start FCM listeners for auto-pairing
                 let _fcm_handles = match fcm::boot_fcm_listeners(&db_pool, conn_mgr).await {

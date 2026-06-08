@@ -138,10 +138,62 @@ diesel::joinable!(pairing_requests -> guild_configs (guild_id));
 diesel::joinable!(player_stats -> paired_servers (server_id));
 diesel::joinable!(server_channels -> paired_servers (server_id));
 diesel::joinable!(server_settings -> paired_servers (server_id));
-
 diesel::joinable!(vending_subscriptions -> paired_servers (server_id));
 diesel::joinable!(sessions -> users (discord_id));
 diesel::joinable!(user_rustplus_credentials -> users (discord_id));
+
+diesel::table! {
+    player_name_history (id) {
+        id -> Integer,
+        tracked_player_id -> Integer,
+        name -> Text,
+        seen_at -> Timestamp,
+    }
+}
+
+diesel::table! {
+    track_groups (id) {
+        id -> Integer,
+        server_id -> Integer,
+        name -> Text,
+        color -> Nullable<Text>,
+        created_at -> Timestamp,
+    }
+}
+
+diesel::table! {
+    track_notifications_config (id) {
+        id -> Integer,
+        server_id -> Integer,
+        discord_channel_id -> Nullable<Text>,
+        dashboard_message_id -> Nullable<Text>,
+        in_game_alerts -> Integer,
+        alert_on_join -> Integer,
+        alert_on_leave -> Integer,
+        alert_on_name_change -> Integer,
+    }
+}
+
+diesel::table! {
+    tracked_players (id) {
+        id -> Integer,
+        group_id -> Nullable<Integer>,
+        server_id -> Integer,
+        steam_id -> Text,
+        bm_player_id -> Nullable<Text>,
+        last_known_name -> Nullable<Text>,
+        last_known_server_id -> Nullable<Text>,
+        is_online -> Integer,
+        last_seen -> Nullable<Timestamp>,
+        created_at -> Timestamp,
+    }
+}
+
+diesel::joinable!(player_name_history -> tracked_players (tracked_player_id));
+diesel::joinable!(track_groups -> paired_servers (server_id));
+diesel::joinable!(track_notifications_config -> paired_servers (server_id));
+diesel::joinable!(tracked_players -> paired_servers (server_id));
+diesel::joinable!(tracked_players -> track_groups (group_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     fcm_credentials,
@@ -155,4 +207,8 @@ diesel::allow_tables_to_appear_in_same_query!(
     user_rustplus_credentials,
     users,
     vending_subscriptions,
+    player_name_history,
+    track_groups,
+    track_notifications_config,
+    tracked_players,
 );
