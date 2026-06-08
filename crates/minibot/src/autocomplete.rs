@@ -1,4 +1,4 @@
-use crate::{Error, PoiseContext};
+use crate::Error;
 use db::models::PairedServer;
 use diesel::prelude::*;
 use poise::serenity_prelude as serenity;

@@ -9,7 +9,7 @@ serde.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 poise.workspace = true
-serenity.workspace = true
+serenity = { workspace = true, features = ["voice"] }
 anyhow.workspace = true
 regex.workspace = true
 serde_json.workspace = true
@@ -25,3 +25,5 @@ scraper.workspace = true
 moka.workspace = true
 chrono.workspace = true
 rand.workspace = true
+songbird = "0.6.0"
+symphonia = { version = "0.5", features = ["mp3"] }

@@ -190,7 +190,7 @@ impl ConnectionManager {
             let data = self.data_ref.clone();
             let registry = self.registry.clone();
             let clients_arc = self.clients.clone();
-            let db_pool = self.db_pool.clone();
+            let _db_pool = self.db_pool.clone();
             let server_name = server.name.clone();
 
             tokio::spawn(async move {

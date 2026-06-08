@@ -12,16 +12,20 @@ pub struct TrackerWatchdog {
     http: Arc<serenity::Http>,
     bm_client: BmScraperClient,
     steam_client: Arc<SteamService>,
+    songbird_manager: Arc<songbird::Songbird>,
+    reqwest_client: reqwest::Client,
 }
 
 impl TrackerWatchdog {
-    pub fn new(db_pool: DbPool, http: Arc<serenity::Http>) -> Self {
+    pub fn new(db_pool: DbPool, http: Arc<serenity::Http>, songbird_manager: Arc<songbird::Songbird>) -> Self {
         let steam_client = Arc::new(SteamService::new().unwrap());
         Self {
             db_pool,
             http,
             bm_client: BmScraperClient::new(),
             steam_client,
+            songbird_manager,
+            reqwest_client: reqwest::Client::new(),
         }
     }
 
@@ -95,6 +99,63 @@ impl TrackerWatchdog {
                             ))
                             .execute(&mut conn)?;
                         needs_refresh = true;
+
+                        // Check TTS config
+                        use db::schema::track_notifications_config::dsl as tnc_dsl;
+                        if let Ok(Some(config)) = tnc_dsl::track_notifications_config
+                            .filter(tnc_dsl::server_id.eq(paired.id))
+                            .first::<db::models::TrackNotificationsConfig>(&mut conn)
+                            .optional() 
+                        {
+                            if let Some(vc_id_str) = config.tts_voice_channel_id {
+                                let should_alert = if is_currently_online { config.alert_on_join == 1 } else { config.alert_on_leave == 1 };
+                                if should_alert && config.tts_enabled == 1 {
+                                    use db::schema::fcm_credentials::dsl as fcm_dsl;
+                                    use db::schema::paired_servers::dsl as ps_dsl;
+                                    
+                                    // Need to find guild_id to join VC
+                                    if let Ok(Some(cred)) = fcm_dsl::fcm_credentials
+                                        .inner_join(ps_dsl::paired_servers)
+                                        .filter(ps_dsl::id.eq(paired.id))
+                                        .select(fcm_dsl::fcm_credentials::all_columns())
+                                        .first::<db::models::FcmCredential>(&mut conn)
+                                        .optional()
+                                    {
+                                        if let (Ok(guild_id), Ok(vc_id)) = (cred.guild_id.parse::<u64>(), vc_id_str.parse::<u64>()) {
+                                            let action = if is_currently_online { "joined" } else { "left" };
+                                            let name_to_say = player.last_known_name.clone().unwrap_or_else(|| "Someone".to_string());
+                                            let tts_text = format!("{} {}", name_to_say, action);
+                                            
+                                            let songbird_manager = self.songbird_manager.clone();
+                                            let reqwest_client = self.reqwest_client.clone();
+                                            let http = self.http.clone();
+                                            
+                                            tokio::spawn(async move {
+                                                let channel_id = serenity::model::id::ChannelId::new(vc_id);
+                                                let actual_guild_id = match http.get_channel(channel_id).await {
+                                                    Ok(serenity::model::channel::Channel::Guild(gc)) => gc.guild_id,
+                                                    _ => serenity::model::id::GuildId::new(guild_id), // fallback
+                                                };
+                                                
+                                                match crate::tracking::tts::generate_tts(&tts_text, "en_us_001", &reqwest_client).await {
+                                                    Ok(bytes) => {
+                                                        if let Err(e) = crate::tracking::tts::play_and_leave(
+                                                            songbird_manager,
+                                                            actual_guild_id,
+                                                            channel_id,
+                                                            bytes
+                                                        ).await {
+                                                            error!("Failed to play TTS: {}", e);
+                                                        }
+                                                    }
+                                                    Err(e) => error!("Failed to generate TTS: {}", e),
+                                                }
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     if is_currently_online {

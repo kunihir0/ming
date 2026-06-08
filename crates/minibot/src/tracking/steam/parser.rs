@@ -39,7 +39,7 @@ pub fn parse_profile(html: &str, steam_id64: String) -> Result<SteamProfile> {
             let title = title_el.text().collect::<String>();
             if let Some(stripped) = title.strip_prefix("Steam Community :: ") {
                 persona_name = Some(stripped.trim().to_string());
-            } else if let Some(stripped) = title.strip_prefix("Steam Community :: Error") {
+            } else if let Some(_stripped) = title.strip_prefix("Steam Community :: Error") {
                 // Ignore error pages
             } else {
                 persona_name = Some(title.trim().to_string());

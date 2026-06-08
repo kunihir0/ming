@@ -76,8 +76,87 @@ impl UnifiedCommand for TrackCommand {
 // Discord Slash Commands
 // ---------------------------------------------------------------------------
 
-#[poise::command(slash_command, subcommands("setup_dashboard", "add", "remove", "group"), subcommand_required)]
+#[poise::command(slash_command, subcommands("setup_dashboard", "setup_tts", "tts_toggle", "add", "remove", "group"), subcommand_required)]
 pub async fn track(_ctx: PoiseContext<'_>) -> Result<(), Error> {
+    Ok(())
+}
+
+/// Setup the TTS voice channel for tracking notifications
+#[poise::command(slash_command)]
+async fn setup_tts(
+    ctx: PoiseContext<'_>,
+    #[description = "Server ID"]
+    #[autocomplete = "crate::autocomplete::autocomplete_server"]
+    server_id: i32,
+    #[description = "Voice Channel"]
+    #[channel_types("Voice")]
+    channel: serenity::model::channel::GuildChannel,
+) -> Result<(), Error> {
+    ctx.defer().await?;
+    
+    let mut conn = ctx.data().db_pool.get()?;
+    use db::schema::track_notifications_config::dsl as config_dsl;
+    use db::models::NewTrackNotificationsConfig;
+    
+    let existing: i64 = config_dsl::track_notifications_config
+        .filter(config_dsl::server_id.eq(server_id))
+        .count()
+        .get_result(&mut conn)?;
+        
+    if existing > 0 {
+        diesel::update(config_dsl::track_notifications_config.filter(config_dsl::server_id.eq(server_id)))
+            .set(config_dsl::tts_voice_channel_id.eq(Some(channel.id.to_string())))
+            .execute(&mut conn)?;
+    } else {
+        diesel::insert_into(config_dsl::track_notifications_config)
+            .values(NewTrackNotificationsConfig {
+                server_id,
+                discord_channel_id: None,
+                dashboard_message_id: None,
+                tts_voice_channel_id: Some(channel.id.to_string()),
+                in_game_alerts: 0,
+                alert_on_join: 1,
+                alert_on_leave: 1,
+                alert_on_name_change: 1,
+                tts_enabled: 1,
+            })
+            .execute(&mut conn)?;
+    }
+    
+    ctx.say(format!("✅ TTS voice channel set to <#{}>", channel.id)).await?;
+    Ok(())
+}
+
+/// Toggle TTS notifications on or off
+#[poise::command(slash_command)]
+async fn tts_toggle(
+    ctx: PoiseContext<'_>,
+    #[description = "Server ID"]
+    #[autocomplete = "crate::autocomplete::autocomplete_server"]
+    server_id: i32,
+) -> Result<(), Error> {
+    ctx.defer().await?;
+    
+    let mut conn = ctx.data().db_pool.get()?;
+    use db::schema::track_notifications_config::dsl as config_dsl;
+    
+    let config_opt = config_dsl::track_notifications_config
+        .filter(config_dsl::server_id.eq(server_id))
+        .first::<db::models::TrackNotificationsConfig>(&mut conn)
+        .optional()?;
+        
+    if let Some(config) = config_opt {
+        let new_state = if config.tts_enabled == 1 { 0 } else { 1 };
+        diesel::update(config_dsl::track_notifications_config.filter(config_dsl::server_id.eq(server_id)))
+            .set(config_dsl::tts_enabled.eq(new_state))
+            .execute(&mut conn)?;
+            
+        let state_str = if new_state == 1 { "enabled" } else { "disabled" };
+        ctx.say(format!("✅ TTS notifications are now **{}** for this server.", state_str)).await?;
+    } else {
+        ctx.say("❌ No tracking configuration found for this server. Please run `/track setup_tts` first.").await?;
+    }
+    
     Ok(())
 }
 
@@ -121,10 +200,12 @@ async fn setup_dashboard(
                 server_id,
                 discord_channel_id: Some(channel_id.to_string()),
                 dashboard_message_id: Some(message_id.to_string()),
+                tts_voice_channel_id: None,
                 in_game_alerts: 0,
                 alert_on_join: 1,
                 alert_on_leave: 1,
                 alert_on_name_change: 1,
+                tts_enabled: 1,
             })
             .execute(&mut conn)?;
     }

@@ -167,10 +167,12 @@ diesel::table! {
         server_id -> Integer,
         discord_channel_id -> Nullable<Text>,
         dashboard_message_id -> Nullable<Text>,
+        tts_voice_channel_id -> Nullable<Text>,
         in_game_alerts -> Integer,
         alert_on_join -> Integer,
         alert_on_leave -> Integer,
         alert_on_name_change -> Integer,
+        tts_enabled -> Integer,
     }
 }
 

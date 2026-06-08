@@ -476,7 +476,7 @@ fn discord_context<'a>(
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
-        .with_env_filter("minibot=debug,info")
+        .with_env_filter("minibot=debug,songbird=debug,info")
         .init();
     let _ = dotenvy::dotenv();
     rustls::crypto::ring::default_provider()
@@ -494,7 +494,7 @@ async fn main() -> anyhow::Result<()> {
 
     let token = env::var("DISCORD_TOKEN").context("Missing DISCORD_TOKEN")?;
     let intents =
-        serenity::GatewayIntents::non_privileged() | serenity::GatewayIntents::MESSAGE_CONTENT;
+        serenity::GatewayIntents::non_privileged() | serenity::GatewayIntents::MESSAGE_CONTENT | serenity::GatewayIntents::GUILD_VOICE_STATES;
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
@@ -540,7 +540,8 @@ async fn main() -> anyhow::Result<()> {
                 conn_mgr.clone().start_watchdog();
 
                 // Start tracking watchdog
-                let tracking_watchdog = Arc::new(crate::tracking::watchdog::TrackerWatchdog::new(db_pool.clone(), ctx.http.clone()));
+                let songbird_manager = songbird::get(ctx).await.expect("Songbird Voice client placed in at initialization.");
+                let tracking_watchdog = Arc::new(crate::tracking::watchdog::TrackerWatchdog::new(db_pool.clone(), ctx.http.clone(), songbird_manager));
                 tokio::spawn(tracking_watchdog.start());
 
                 // Start FCM listeners for auto-pairing
@@ -557,9 +558,12 @@ async fn main() -> anyhow::Result<()> {
         })
         .build();
 
+    use songbird::SerenityInit;
     let mut client = serenity::ClientBuilder::new(token, intents)
         .framework(framework)
-        .await?;
+        .register_songbird()
+        .await
+        .unwrap();
 
     info!("Starting Minibot...");
     client.start().await?;

@@ -1,6 +1,6 @@
 use axum::{
     extract::Query,
-    response::{Html, IntoResponse},
+    response::Html,
     routing::get,
     Router,
 };

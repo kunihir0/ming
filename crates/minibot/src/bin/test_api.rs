@@ -1,7 +1,5 @@
 use rustplus::RustPlusClient;
 use std::env;
-use std::sync::Arc;
-use tokio::sync::Mutex;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -37,19 +35,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Testing get_info...");
     match client.get_info().await {
-        Ok(res) => println!("get_info Ok"),
+        Ok(_res) => println!("get_info Ok"),
         Err(e) => println!("get_info Err: {}", e),
     }
 
     println!("Testing get_time...");
     match client.get_time().await {
-        Ok(res) => println!("get_time Ok"),
+        Ok(_res) => println!("get_time Ok"),
         Err(e) => println!("get_time Err: {}", e),
     }
 
     println!("Testing get_map...");
     match client.get_map().await {
-        Ok(res) => println!("get_map Ok"),
+        Ok(_res) => println!("get_map Ok"),
         Err(e) => println!("get_map Err: {}", e),
     }
 

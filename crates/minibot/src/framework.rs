@@ -131,7 +131,6 @@ impl<'a> UnifiedContext<'a> {
     }
 }
 
-use std::future::Future;
 use std::pin::Pin;
 
 pub struct CommandResponse {

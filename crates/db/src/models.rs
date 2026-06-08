@@ -324,10 +324,12 @@ pub struct TrackNotificationsConfig {
     pub server_id: i32,
     pub discord_channel_id: Option<String>,
     pub dashboard_message_id: Option<String>,
+    pub tts_voice_channel_id: Option<String>,
     pub in_game_alerts: i32,
     pub alert_on_join: i32,
     pub alert_on_leave: i32,
     pub alert_on_name_change: i32,
+    pub tts_enabled: i32,
 }
 
 #[derive(Insertable, Debug, Clone)]
@@ -336,9 +338,11 @@ pub struct NewTrackNotificationsConfig {
     pub server_id: i32,
     pub discord_channel_id: Option<String>,
     pub dashboard_message_id: Option<String>,
+    pub tts_voice_channel_id: Option<String>,
     pub in_game_alerts: i32,
     pub alert_on_join: i32,
     pub alert_on_leave: i32,
     pub alert_on_name_change: i32,
+    pub tts_enabled: i32,
 }
 

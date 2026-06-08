@@ -1,0 +1,1 @@
+ALTER TABLE track_notifications_config DROP COLUMN tts_voice_channel_id;

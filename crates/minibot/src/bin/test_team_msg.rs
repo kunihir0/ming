@@ -1,4 +1,3 @@
-use rustplus::RustPlusClient;
 
 #[tokio::main]
 async fn main() {

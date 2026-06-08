@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use reqwest::Client;
 use std::time::Duration;
 use crate::tracking::battlemetrics::types::{BmPlayer, BmServerPlayer, BmServerPlayerList};
