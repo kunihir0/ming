@@ -5,10 +5,16 @@ use poise::serenity_prelude as serenity;
 use std::sync::Arc;
 
 pub async fn autocomplete_server<'a>(
-    ctx: poise::ApplicationContext<'a, Arc<crate::framework::MinibotData>, Error>,
+    ctx: poise::Context<'a, Arc<crate::framework::MinibotData>, Error>,
     partial: &'a str,
 ) -> impl std::iter::Iterator<Item = serenity::AutocompleteChoice> + 'a {
-    let mut conn = ctx.data().db_pool.get().unwrap();
+    let mut conn = match ctx.data().db_pool.get() {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!("Failed to get db connection for autocomplete: {}", e);
+            return vec![].into_iter();
+        }
+    };
     use db::schema::paired_servers::dsl::*;
     
     let servers: Vec<PairedServer> = paired_servers.load(&mut conn).unwrap_or_default();
@@ -27,6 +33,8 @@ pub async fn autocomplete_server<'a>(
                 s.id as i64,
             )
         })
+        .collect::<Vec<_>>()
+        .into_iter()
 }
 
 pub async fn autocomplete_item<'a>(

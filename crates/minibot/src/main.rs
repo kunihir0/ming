@@ -499,6 +499,28 @@ async fn main() -> anyhow::Result<()> {
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
             commands: vec![v(), server(), credentials(), set_reply_channel(), track()],
+            event_handler: |ctx, event, _framework, data| {
+                Box::pin(async move {
+                    if let poise::serenity_prelude::FullEvent::InteractionCreate { interaction } = event {
+                        if let poise::serenity_prelude::Interaction::Component(component) = interaction {
+                            let custom_id = component.data.custom_id.clone();
+                            if custom_id.starts_with("track_") {
+                                if let Err(e) = crate::tracking::dashboard::handle_component(ctx, component, &data.db_pool).await {
+                                    tracing::error!("Dashboard component error: {}", e);
+                                }
+                            }
+                        } else if let poise::serenity_prelude::Interaction::Modal(modal) = interaction {
+                            let custom_id = modal.data.custom_id.clone();
+                            if custom_id.starts_with("track_") {
+                                if let Err(e) = crate::tracking::dashboard::handle_modal(ctx, modal, &data.db_pool).await {
+                                    tracing::error!("Dashboard modal error: {}", e);
+                                }
+                            }
+                        }
+                    }
+                    Ok(())
+                })
+            },
             ..Default::default()
         })
         .setup(move |ctx, _ready, framework| {

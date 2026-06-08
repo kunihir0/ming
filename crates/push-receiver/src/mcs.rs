@@ -92,7 +92,12 @@ pub async fn connect(
                 debug!("Received unhandled MCS message: {:?}", other.tag());
             }
             Err(e) => {
-                error!("MCS protocol error: {e}");
+                let err_str = e.to_string();
+                if err_str.contains("peer closed connection") || err_str.contains("UnexpectedEof") {
+                    debug!("MCS connection closed by peer (expected): {e}");
+                } else {
+                    error!("MCS protocol error: {e}");
+                }
                 break;
             }
         }

@@ -42,13 +42,15 @@ impl TrackerWatchdog {
     }
 
     async fn run_cycle(&self) -> anyhow::Result<()> {
-        let mut conn = self.db_pool.get()?;
         use db::schema::tracked_players::dsl::*;
         use db::schema::paired_servers::dsl as servers_dsl;
         use db::schema::player_name_history::dsl as pnh;
         use diesel::prelude::*;
         
-        let all_paired_servers = servers_dsl::paired_servers.load::<db::models::PairedServer>(&mut conn)?;
+        let all_paired_servers = {
+            let mut conn = self.db_pool.get()?;
+            servers_dsl::paired_servers.load::<db::models::PairedServer>(&mut conn)?
+        };
         let mut servers_to_refresh = HashSet::new();
 
         for paired in all_paired_servers {
@@ -79,9 +81,12 @@ impl TrackerWatchdog {
                 online_names_to_bm_ids.insert(p.name.clone(), p.bm_id.clone());
             }
 
-            let server_players = tracked_players
-                .filter(server_id.eq(paired.id))
-                .load::<db::models::TrackedPlayer>(&mut conn)?;
+            let server_players = {
+                let mut conn = self.db_pool.get()?;
+                tracked_players
+                    .filter(server_id.eq(paired.id))
+                    .load::<db::models::TrackedPlayer>(&mut conn)?
+            };
 
             for player in server_players {
                 let mut needs_refresh = false;
@@ -92,34 +97,45 @@ impl TrackerWatchdog {
 
                     if is_online_db != is_currently_online {
                         info!("Player {} ({}) status changed to: online={}", player.steam_id, bm_id, is_currently_online);
-                        diesel::update(tracked_players.filter(id.eq(player.id)))
-                            .set((
-                                is_online.eq(if is_currently_online { 1 } else { 0 }),
-                                last_known_server_id.eq(if is_currently_online { Some(bm_server_id.clone()) } else { None }),
-                            ))
-                            .execute(&mut conn)?;
+                        {
+                            let mut conn = self.db_pool.get()?;
+                            diesel::update(tracked_players.filter(id.eq(player.id)))
+                                .set((
+                                    is_online.eq(if is_currently_online { 1 } else { 0 }),
+                                    last_known_server_id.eq(if is_currently_online { Some(bm_server_id.clone()) } else { None }),
+                                ))
+                                .execute(&mut conn)?;
+                        }
                         needs_refresh = true;
 
                         // Check TTS config
-                        use db::schema::track_notifications_config::dsl as tnc_dsl;
-                        if let Ok(Some(config)) = tnc_dsl::track_notifications_config
-                            .filter(tnc_dsl::server_id.eq(paired.id))
-                            .first::<db::models::TrackNotificationsConfig>(&mut conn)
-                            .optional() 
-                        {
+                        let tts_config = {
+                            let mut conn = self.db_pool.get()?;
+                            use db::schema::track_notifications_config::dsl as tnc_dsl;
+                            tnc_dsl::track_notifications_config
+                                .filter(tnc_dsl::server_id.eq(paired.id))
+                                .first::<db::models::TrackNotificationsConfig>(&mut conn)
+                                .optional()?
+                        };
+
+                        if let Some(config) = tts_config {
                             if let Some(vc_id_str) = config.tts_voice_channel_id {
                                 let should_alert = if is_currently_online { config.alert_on_join == 1 } else { config.alert_on_leave == 1 };
                                 if should_alert && config.tts_enabled == 1 {
                                     use db::schema::fcm_credentials::dsl as fcm_dsl;
                                     use db::schema::paired_servers::dsl as ps_dsl;
                                     
-                                    // Need to find guild_id to join VC
-                                    if let Ok(Some(cred)) = fcm_dsl::fcm_credentials
-                                        .inner_join(ps_dsl::paired_servers)
-                                        .filter(ps_dsl::id.eq(paired.id))
-                                        .select(fcm_dsl::fcm_credentials::all_columns())
-                                        .first::<db::models::FcmCredential>(&mut conn)
-                                        .optional()
+                                    let cred = {
+                                        let mut conn = self.db_pool.get()?;
+                                        fcm_dsl::fcm_credentials
+                                            .inner_join(ps_dsl::paired_servers)
+                                            .filter(ps_dsl::id.eq(paired.id))
+                                            .select(fcm_dsl::fcm_credentials::all_columns())
+                                            .first::<db::models::FcmCredential>(&mut conn)
+                                            .optional()?
+                                    };
+                                    
+                                    if let Some(cred) = cred
                                     {
                                         if let (Ok(guild_id), Ok(vc_id)) = (cred.guild_id.parse::<u64>(), vc_id_str.parse::<u64>()) {
                                             let action = if is_currently_online { "joined" } else { "left" };
@@ -167,16 +183,19 @@ impl TrackerWatchdog {
 
                         if name_changed {
                             info!("Player {} ({}) changed name to {}", player.steam_id, bm_id, current_name);
-                            diesel::update(tracked_players.filter(id.eq(player.id)))
-                                .set(last_known_name.eq(current_name))
-                                .execute(&mut conn)?;
-                            
-                            diesel::insert_into(pnh::player_name_history)
-                                .values(db::models::NewPlayerNameHistory {
-                                    tracked_player_id: player.id,
-                                    name: current_name.clone(),
-                                })
-                                .execute(&mut conn)?;
+                            {
+                                let mut conn = self.db_pool.get()?;
+                                diesel::update(tracked_players.filter(id.eq(player.id)))
+                                    .set(last_known_name.eq(current_name))
+                                    .execute(&mut conn)?;
+                                
+                                diesel::insert_into(pnh::player_name_history)
+                                    .values(db::models::NewPlayerNameHistory {
+                                        tracked_player_id: player.id,
+                                        name: current_name.clone(),
+                                    })
+                                    .execute(&mut conn)?;
+                            }
                             needs_refresh = true;
                         }
                     }
@@ -188,22 +207,28 @@ impl TrackerWatchdog {
                             info!("Steam Profile for {}: name = '{}'", player.steam_id, steam_name);
                             
                             if player.last_known_name.as_deref() != Some(&steam_name) {
-                                diesel::update(tracked_players.filter(id.eq(player.id)))
-                                    .set(last_known_name.eq(Some(&steam_name)))
-                                    .execute(&mut conn)?;
+                                {
+                                    let mut conn = self.db_pool.get()?;
+                                    diesel::update(tracked_players.filter(id.eq(player.id)))
+                                        .set(last_known_name.eq(Some(&steam_name)))
+                                        .execute(&mut conn)?;
+                                }
                                 needs_refresh = true;
                             }
                             
                             if let Some(matched_bm_id) = online_names_to_bm_ids.get(&steam_name) {
                                 info!("✅ Cross-referenced Steam ID {} to BM ID {}", player.steam_id, matched_bm_id);
-                                diesel::update(tracked_players.filter(id.eq(player.id)))
-                                    .set((
-                                        bm_player_id.eq(Some(matched_bm_id.to_string())),
-                                        last_known_name.eq(Some(steam_name.clone())),
-                                        is_online.eq(1),
-                                        last_known_server_id.eq(Some(bm_server_id.clone())),
-                                    ))
-                                    .execute(&mut conn)?;
+                                {
+                                    let mut conn = self.db_pool.get()?;
+                                    diesel::update(tracked_players.filter(id.eq(player.id)))
+                                        .set((
+                                            bm_player_id.eq(Some(matched_bm_id.to_string())),
+                                            last_known_name.eq(Some(steam_name.clone())),
+                                            is_online.eq(1),
+                                            last_known_server_id.eq(Some(bm_server_id.clone())),
+                                        ))
+                                        .execute(&mut conn)?;
+                                }
                                 needs_refresh = true;
                             } else {
                                 info!("Steam name '{}' not found in BM server player list.", steam_name);
