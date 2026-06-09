@@ -36,8 +36,45 @@ pub enum SearchType {
 // Vending commands: /v search | /v subs | /v list | /v dump
 // ---------------------------------------------------------------------------
 
-#[poise::command(slash_command, subcommands("search", "subs", "list", "dump"), subcommand_required)]
+#[poise::command(slash_command, subcommands("search", "subs", "list", "dump"), subcommand_required, category = "Vending Machines")]
 async fn v(_ctx: PoiseContext<'_>) -> Result<(), Error> {
+    Ok(())
+}
+
+/// Show the bot's help menu
+#[poise::command(slash_command, category = "Settings")]
+async fn help(ctx: PoiseContext<'_>) -> Result<(), Error> {
+    let mut help_text = String::from("```asciidoc\n= Minibot Command Reference =\n");
+
+    let commands = &ctx.framework().options().commands;
+    let mut categories: std::collections::BTreeMap<&str, Vec<_>> = std::collections::BTreeMap::new();
+    
+    for cmd in commands {
+        if cmd.hide_in_help { continue; }
+        let cat = cmd.category.as_deref().unwrap_or("Uncategorized");
+        categories.entry(cat).or_default().push(cmd);
+    }
+    
+    for (cat_name, cmds) in categories {
+        help_text.push_str(&format!("\n== {} ==\n", cat_name));
+        for cmd in cmds {
+            if cmd.subcommands.is_empty() {
+                let desc = cmd.description.as_deref().unwrap_or("No description");
+                help_text.push_str(&format!("/{:<20} :: {}\n", cmd.name, desc));
+            } else {
+                for sub in &cmd.subcommands {
+                    if sub.hide_in_help { continue; }
+                    let desc = sub.description.as_deref().unwrap_or("No description");
+                    let full_name = format!("{} {}", cmd.name, sub.name);
+                    help_text.push_str(&format!("/{:<20} :: {}\n", full_name, desc));
+                }
+            }
+        }
+    }
+    
+    help_text.push_str("```");
+    
+    ctx.send(poise::CreateReply::default().content(help_text).ephemeral(true)).await?;
     Ok(())
 }
 
@@ -208,6 +245,7 @@ async fn dump(
     slash_command,
     subcommands("server_connect", "server_disconnect", "server_list", "server_clear_all"),
     subcommand_required,
+    category = "Server Management",
     required_permissions = "MANAGE_GUILD"
 )]
 async fn server(_ctx: PoiseContext<'_>) -> Result<(), Error> {
@@ -317,7 +355,7 @@ async fn server_list(ctx: PoiseContext<'_>) -> Result<(), Error> {
 // ---------------------------------------------------------------------------
 
 /// Set the default Discord channel for in-game replies
-#[poise::command(slash_command, required_permissions = "MANAGE_GUILD")]
+#[poise::command(slash_command, required_permissions = "MANAGE_GUILD", category = "Config")]
 async fn set_reply_channel(
     ctx: PoiseContext<'_>,
     #[description = "Server ID"]
@@ -345,6 +383,7 @@ async fn set_reply_channel(
     slash_command,
     subcommands("creds_add", "creds_list", "creds_clear_all"),
     subcommand_required,
+    category = "Credentials",
     required_permissions = "ADMINISTRATOR"
 )]
 async fn credentials(_ctx: PoiseContext<'_>) -> Result<(), Error> {

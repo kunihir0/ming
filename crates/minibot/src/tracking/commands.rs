@@ -76,7 +76,7 @@ impl UnifiedCommand for TrackCommand {
 // Discord Slash Commands
 // ---------------------------------------------------------------------------
 
-#[poise::command(slash_command, subcommands("setup_dashboard", "setup_tts", "tts_toggle", "add", "remove", "group"), subcommand_required)]
+#[poise::command(slash_command, subcommands("setup_dashboard", "setup_tts", "tts_toggle", "add", "remove", "group"), subcommand_required, category = "Player Tracking")]
 pub async fn track(_ctx: PoiseContext<'_>) -> Result<(), Error> {
     Ok(())
 }
