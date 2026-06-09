@@ -127,8 +127,12 @@ pub async fn refresh_dashboard(http: &serenity::Http, db_pool: &DbPool, server_i
     }
     
     if desc.is_empty() {
-        desc.push_str("No players are currently being tracked. Use `/track add` to add some!");
+        desc.push_str("No players are currently being tracked. Use `/track add` to add some!\n\n");
+    } else {
+        desc.push_str("\n");
     }
+    
+    desc.push_str("```yaml\nHelp Menu:\nAdd Person: Track a new player by Steam ID\nRemove Person: Stop tracking a player\nAssign to Group: Move a player into a group\nCreate Group: Make a new group folder\nDelete Group: Remove a group and unassign its members\nClear Aliases: Reset a player's name history\n```");
     
     embed = embed.description(desc);
     
