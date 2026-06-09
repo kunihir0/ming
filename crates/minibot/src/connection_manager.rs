@@ -5,7 +5,7 @@ use rustplus::RustPlusClient;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::framework::CommandRegistry;
 
@@ -90,7 +90,7 @@ impl ConnectionManager {
                     if !active_clients.contains(&server.id) {
                         warn!("Watchdog detecting disconnected server {}. Reconnecting...", server.id);
                         if let Err(e) = mgr.connect(server.id).await {
-                            error!("Watchdog reconnect failed for {}: {}", server.id, e);
+                            debug!("Watchdog reconnect failed for {}: {}", server.id, e);
                         }
                     }
                 }
@@ -138,18 +138,11 @@ impl ConnectionManager {
             false,
         );
 
+        let mut proxy_used = false;
         match client.connect().await {
-            Ok(()) => {
-                info!(
-                    "Connected to {} ({}:{}) directly",
-                    server.name, server.server_ip, server.server_port
-                );
-            }
+            Ok(()) => {}
             Err(e) => {
-                warn!(
-                    "Direct connect to {} failed ({}), retrying via proxy...",
-                    server.name, e
-                );
+                debug!("Direct connect to {} failed ({}), retrying via proxy...", server.name, e);
                 client = RustPlusClient::new(
                     server.server_ip.clone(),
                     port,
@@ -158,18 +151,21 @@ impl ConnectionManager {
                     true,
                 );
                 client.connect().await.context("Proxy connect also failed")?;
-                info!(
-                    "Connected to {} ({}:{}) via proxy",
-                    server.name, server.server_ip, server.server_port
-                );
+                proxy_used = true;
             }
         }
 
         // Subscribe to team chat so the server actually sends us messages!
         if let Err(e) = client.get_team_chat().await {
             client.disconnect();
-            anyhow::bail!("Failed to subscribe to team chat: {}", e);
+            anyhow::bail!("Server unresponsive (possibly offline or restarting): {}", e);
         }
+
+        info!(
+            "Connected to {} ({}:{}) {}",
+            server.name, server.server_ip, server.server_port,
+            if proxy_used { "via proxy" } else { "directly" }
+        );
 
         // Mark auto_reconnect
         {

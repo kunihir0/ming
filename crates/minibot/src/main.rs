@@ -10,7 +10,7 @@ pub mod tracking;
 use crate::connection_manager::ConnectionManager;
 use crate::framework::{CommandRegistry, MinibotData, ReplyTarget, UnifiedContext};
 use crate::tracking::commands::{track, TrackCommand};
-use crate::vending::{VendingListCommand, VendingSearchCommand, VendingSubsCommand};
+use crate::vending::{VendingListCommand, VendingSearchCommand, VendingSubsCommand, VendingDumpCommand};
 use anyhow::Context as _;
 use diesel::prelude::*;
 use poise::serenity_prelude as serenity;
@@ -33,10 +33,10 @@ pub enum SearchType {
 }
 
 // ---------------------------------------------------------------------------
-// Vending commands: /v search | /v subs | /v list
+// Vending commands: /v search | /v subs | /v list | /v dump
 // ---------------------------------------------------------------------------
 
-#[poise::command(slash_command, subcommands("search", "subs", "list"), subcommand_required)]
+#[poise::command(slash_command, subcommands("search", "subs", "list", "dump"), subcommand_required)]
 async fn v(_ctx: PoiseContext<'_>) -> Result<(), Error> {
     Ok(())
 }
@@ -150,6 +150,36 @@ async fn list(
     ctx.defer().await?;
     let uctx = discord_context(ctx.data(), server_id, ctx.author().id.get(), ctx.channel_id());
     let cmd = VendingListCommand;
+    let args: Vec<&str> = vec![];
+
+    match crate::framework::UnifiedCommand::execute(&cmd, &uctx, &args).await {
+        Ok(response) => {
+            let pages = response.pages;
+            if pages.len() == 1 {
+                ctx.say(&pages[0]).await?;
+            } else if pages.len() > 1 {
+                let page_refs: Vec<&str> = pages.iter().map(|s| s.as_str()).collect();
+                poise::builtins::paginate(ctx, &page_refs).await?;
+            }
+        }
+        Err(e) => {
+            ctx.say(format!("Error: {}", e)).await?;
+        }
+    }
+    Ok(())
+}
+
+/// Dump the entire server's vending machine list to a JSON file (sent via DM)
+#[poise::command(slash_command)]
+async fn dump(
+    ctx: PoiseContext<'_>,
+    #[description = "Server ID"]
+    #[autocomplete = "crate::autocomplete::autocomplete_server"]
+    server_id: i32,
+) -> Result<(), Error> {
+    ctx.defer().await?;
+    let uctx = discord_context(ctx.data(), server_id, ctx.author().id.get(), ctx.channel_id());
+    let cmd = VendingDumpCommand;
     let args: Vec<&str> = vec![];
 
     match crate::framework::UnifiedCommand::execute(&cmd, &uctx, &args).await {
@@ -533,6 +563,7 @@ async fn main() -> anyhow::Result<()> {
                 registry.register(VendingSearchCommand);
                 registry.register(VendingSubsCommand);
                 registry.register(VendingListCommand);
+                registry.register(VendingDumpCommand);
                 registry.register(TrackCommand);
                 let registry = Arc::new(registry);
 

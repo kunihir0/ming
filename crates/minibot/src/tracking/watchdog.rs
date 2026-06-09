@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use db::DbPool;
 use poise::serenity_prelude as serenity;
-use tracing::{error, info};
+use tracing::{error, info, debug};
 use crate::tracking::battlemetrics::client::BmScraperClient;
 use crate::tracking::steam::SteamService;
 use std::collections::{HashMap, HashSet};
@@ -57,7 +57,7 @@ impl TrackerWatchdog {
             let bm_server_id = match self.bm_client.scrape_server_id_by_ip(&paired.server_ip).await {
                 Ok(Some(s_id)) => s_id,
                 Ok(None) => {
-                    tracing::warn!("Could not find BM Server ID for IP {}", paired.server_ip);
+                    tracing::debug!("Could not find BM Server ID for IP {}", paired.server_ip);
                     continue;
                 }
                 Err(e) => {
@@ -200,11 +200,11 @@ impl TrackerWatchdog {
                         }
                     }
                 } else {
-                    info!("Player {} has no BM ID linked. Attempting to cross-reference...", player.steam_id);
+                    debug!("Player {} has no BM ID linked. Attempting to cross-reference...", player.steam_id);
                     match self.steam_client.get_profile(&player.steam_id).await {
                         Ok(steam_profile) => {
                             let steam_name = steam_profile.persona_name;
-                            info!("Steam Profile for {}: name = '{}'", player.steam_id, steam_name);
+                            debug!("Steam Profile for {}: name = '{}'", player.steam_id, steam_name);
                             
                             if player.last_known_name.as_deref() != Some(&steam_name) {
                                 {
@@ -231,7 +231,7 @@ impl TrackerWatchdog {
                                 }
                                 needs_refresh = true;
                             } else {
-                                info!("Steam name '{}' not found in BM server player list.", steam_name);
+                                debug!("Steam name '{}' not found in BM server player list.", steam_name);
                             }
                         }
                         Err(e) => {

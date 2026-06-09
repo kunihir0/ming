@@ -3,9 +3,16 @@ use reqwest::Client;
 use std::time::Duration;
 use crate::tracking::battlemetrics::types::{BmPlayer, BmServerPlayer, BmServerPlayerList};
 
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use std::collections::HashMap;
+use std::time::Instant;
+
 #[derive(Clone)]
 pub struct BmScraperClient {
     http: Client,
+    server_id_cache: Arc<RwLock<HashMap<String, String>>>,
+    server_id_failures: Arc<RwLock<HashMap<String, Instant>>>,
 }
 
 impl BmScraperClient {
@@ -16,6 +23,8 @@ impl BmScraperClient {
                 .timeout(Duration::from_secs(10))
                 .build()
                 .unwrap(),
+            server_id_cache: Arc::new(RwLock::new(HashMap::new())),
+            server_id_failures: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -94,23 +103,62 @@ impl BmScraperClient {
     }
 
     pub async fn scrape_server_id_by_ip(&self, ip: &str) -> Result<Option<String>> {
-        let url = format!("https://www.battlemetrics.com/servers/rust?q={}", ip);
-        let html = self.http.get(&url).send().await?.error_for_status()?.text().await?;
+        {
+            let cache = self.server_id_cache.read().await;
+            if let Some(id) = cache.get(ip) {
+                return Ok(Some(id.clone()));
+            }
+        }
         
-        if let Some(json) = Self::extract_bootstrap_json(&html) {
-            if let Some(servers) = json.pointer("/state/servers/servers").and_then(|v| v.as_object()) {
-                for (_, server) in servers {
-                    if let Some(server_ip) = server.get("ip").and_then(|v| v.as_str()) {
-                        if server_ip == ip {
-                            return Ok(server.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()));
+        {
+            let failures = self.server_id_failures.read().await;
+            if let Some(time) = failures.get(ip) {
+                if time.elapsed() < Duration::from_secs(300) {
+                    return Ok(None); // Still on cooldown
+                }
+            }
+        }
+
+        let url = format!("https://api.battlemetrics.com/servers?filter[search]={}&filter[game]=rust", ip);
+        let resp_res = self.http.get(&url).send().await;
+        
+        let handle_failure = || async {
+            self.server_id_failures.write().await.insert(ip.to_string(), Instant::now());
+        };
+
+        let resp = match resp_res {
+            Ok(r) => {
+                let r = match r.error_for_status() {
+                    Ok(r) => r,
+                    Err(e) => {
+                        handle_failure().await;
+                        return Err(e.into());
+                    }
+                };
+                r
+            },
+            Err(e) => {
+                handle_failure().await;
+                return Err(e.into());
+            }
+        };
+
+        let json: serde_json::Value = resp.json().await?;
+        
+        if let Some(data) = json.get("data").and_then(|v| v.as_array()) {
+            for server in data {
+                if let Some(server_ip) = server.pointer("/attributes/ip").and_then(|v| v.as_str()) {
+                    if server_ip == ip {
+                        if let Some(id) = server.pointer("/attributes/id").and_then(|v| v.as_str()).map(|s| s.to_string()) {
+                            self.server_id_cache.write().await.insert(ip.to_string(), id.clone());
+                            return Ok(Some(id));
                         }
                     }
                 }
             }
-        } else {
-            anyhow::bail!("No storeBootstrap JSON found on search page. Possibly rate limited or blocked.");
         }
         
+        handle_failure().await;
         Ok(None)
     }
 }

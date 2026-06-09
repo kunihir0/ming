@@ -342,16 +342,121 @@ impl UnifiedCommand for VendingListCommand {
             }
 
             let subs = q.load::<VendingSubscription>(&mut conn)?;
-            
             if subs.is_empty() {
-                return Ok(crate::framework::CommandResponse::text(vec!["You have no active subscriptions.".to_string()]));
+                return Ok(crate::framework::CommandResponse::text(vec!["You have no active vending subscriptions on this server.".to_string()]));
             }
-            
-            let mut response = String::from("Your Subscriptions:\n");
-            for (i, sub) in subs.iter().enumerate() {
-                response.push_str(&format!("{}. {}\n", i + 1, sub.item_name));
+
+            let mut lines = vec!["**Your active subscriptions on this server:**".to_string()];
+            for sub in subs {
+                let max_str = sub.max_price.map(|p| format!(" (Max: {} scrap)", p)).unwrap_or_default();
+                lines.push(format!("- {} `{}`{}", sub.item_name, sub.item_id, max_str));
             }
-            Ok(crate::framework::CommandResponse::text(vec![response]))
+            lines.push(String::new());
+            lines.push("Use `v subs remove <item name>` to cancel a subscription.".to_string());
+
+            Ok(crate::framework::CommandResponse::text(vec![lines.join("\n")]))
+        })
+    }
+}
+
+pub struct VendingDumpCommand;
+
+impl UnifiedCommand for VendingDumpCommand {
+    fn name(&self) -> &'static str {
+        "dump"
+    }
+
+    fn description(&self) -> &'static str {
+        "Dump the entire server's vending machine list to a JSON file (sent via DM)"
+    }
+
+    fn execute<'a>(&'a self, ctx: &'a UnifiedContext<'a>, _args: &'a [&'a str]) -> Pin<Box<dyn Future<Output = Result<crate::framework::CommandResponse>> + Send + 'a>> {
+        Box::pin(async move {
+            let author_discord_id = match &ctx.discord_id {
+                Some(uid) => uid,
+                None => return Ok(crate::framework::CommandResponse::text(vec!["You must link your Discord account to use this command.".to_string()])),
+            };
+
+            let discord_user_id = author_discord_id.parse::<u64>()?;
+            let user_id = poise::serenity_prelude::UserId::new(discord_user_id);
+
+            let mut clients = ctx.data.rustplus_clients.lock().await;
+            let client = match clients.get_mut(&ctx.server_id) {
+                Some(c) => c,
+                None => return Ok(crate::framework::CommandResponse::text(vec!["Rust+ client not connected for this server.".to_string()])),
+            };
+
+            let mut markers_res = None;
+            for _ in 0..3 {
+                match client.get_map_markers().await {
+                    Ok(resp) => {
+                        if let Some(r) = resp.response {
+                            if let Some(mm) = r.map_markers {
+                                markers_res = Some(mm.markers);
+                                break;
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    }
+                }
+            }
+
+            let markers = match markers_res {
+                Some(m) => m,
+                None => return Ok(crate::framework::CommandResponse::text(vec!["Failed to fetch map markers from the Rust server.".to_string()])),
+            };
+
+            let vending_markers: Vec<_> = markers.into_iter()
+                .filter(|m| m.r#type == rustplus::proto::AppMarkerType::VendingMachine as i32)
+                .collect();
+
+            if vending_markers.is_empty() {
+                return Ok(crate::framework::CommandResponse::text(vec!["No vending machines found on the map.".to_string()]));
+            }
+
+            let mut dump_data = Vec::new();
+            for m in vending_markers {
+                let mut sell_orders = Vec::new();
+                for so in m.sell_orders {
+                    sell_orders.push(serde_json::json!({
+                        "item_id": so.item_id,
+                        "item_shortname": crate::items::get_item_shortname(so.item_id),
+                        "quantity": so.quantity,
+                        "currency_id": so.currency_id,
+                        "currency_shortname": crate::items::get_item_shortname(so.currency_id),
+                        "cost_per_item": so.cost_per_item,
+                        "amount_in_stock": so.amount_in_stock,
+                        "item_is_blueprint": so.item_is_blueprint,
+                        "currency_is_blueprint": so.currency_is_blueprint,
+                    }));
+                }
+                
+                dump_data.push(serde_json::json!({
+                    "id": m.id,
+                    "name": m.name,
+                    "x": m.x,
+                    "y": m.y,
+                    "out_of_stock": m.out_of_stock,
+                    "sell_orders": sell_orders,
+                }));
+            }
+
+            let json_str = serde_json::to_string_pretty(&dump_data)?;
+
+            let dm_channel = user_id.create_dm_channel(&ctx.data.discord_http).await?;
+            let attachment = poise::serenity_prelude::CreateAttachment::bytes(json_str.into_bytes(), "vending_dump.json");
+            let msg = poise::serenity_prelude::CreateMessage::new()
+                .content(format!("Here is the vending machine dump for server ID {}:", ctx.server_id))
+                .add_file(attachment);
+
+            if let Err(e) = dm_channel.send_message(&ctx.data.discord_http, msg).await {
+                tracing::error!("Failed to send DM to user {}: {}", discord_user_id, e);
+                return Ok(crate::framework::CommandResponse::text(vec!["Failed to send you a DM. Do you have DMs disabled?".to_string()]));
+            }
+
+            Ok(crate::framework::CommandResponse::text(vec!["Vending machine dump has been sent to your DMs!".to_string()]))
         })
     }
 }
