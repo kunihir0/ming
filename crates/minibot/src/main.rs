@@ -4,12 +4,14 @@ mod fcm;
 mod framework;
 mod items;
 mod listener;
-mod vending;
+pub mod vending;
+pub mod team;
 pub mod tracking;
 
 use crate::connection_manager::ConnectionManager;
 use crate::framework::{CommandRegistry, MinibotData, ReplyTarget, UnifiedContext};
 use crate::tracking::commands::{track, TrackCommand};
+use crate::team::team;
 use crate::vending::{VendingListCommand, VendingSearchCommand, VendingSubsCommand, VendingDumpCommand};
 use anyhow::Context as _;
 use diesel::prelude::*;
@@ -567,7 +569,7 @@ async fn main() -> anyhow::Result<()> {
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
-            commands: vec![v(), server(), credentials(), set_reply_channel(), track()],
+            commands: vec![v(), server(), credentials(), set_reply_channel(), track(), help(), team()],
             event_handler: |ctx, event, _framework, data| {
                 Box::pin(async move {
                     if let poise::serenity_prelude::FullEvent::InteractionCreate { interaction } = event {
@@ -606,12 +608,14 @@ async fn main() -> anyhow::Result<()> {
                 registry.register(TrackCommand);
                 let registry = Arc::new(registry);
 
+                let team_queue = Arc::new(crate::team::TeamQueue::new(ctx.http.clone()));
                 let data = Arc::new(MinibotData {
                     db_pool: db_pool.clone(),
                     rustplus_clients: Arc::new(Mutex::new(HashMap::new())),
                     reply_channels: Arc::new(Mutex::new(HashMap::new())),
                     discord_http: ctx.http.clone(),
                     connection_manager: Arc::new(Mutex::new(None)),
+                    team_queue: Some(team_queue),
                 });
 
                 // Build ConnectionManager with a reference to shared state

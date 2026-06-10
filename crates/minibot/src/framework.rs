@@ -11,6 +11,7 @@ pub struct MinibotData {
     pub reply_channels: Arc<Mutex<HashMap<i32, serenity::ChannelId>>>,
     pub discord_http: Arc<serenity::Http>,
     pub connection_manager: Arc<Mutex<Option<Arc<crate::connection_manager::ConnectionManager>>>>,
+    pub team_queue: Option<Arc<crate::team::TeamQueue>>,
 }
 
 #[derive(Clone)]

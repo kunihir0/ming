@@ -19,6 +19,7 @@ rustls.workspace = true
 db = { path = "../db" }
 rustplus = { path = "../rustplus" }
 push-receiver = { path = "../push-receiver" }
+team_dec = { path = "../team_dec" }
 base64.workspace = true
 reqwest.workspace = true
 scraper.workspace = true
