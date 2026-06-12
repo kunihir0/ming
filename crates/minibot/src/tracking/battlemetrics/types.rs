@@ -4,6 +4,7 @@ pub struct BmPlayer {
     pub current_name: String,
     pub is_online: bool,
     pub current_server_id: Option<String>,
+    pub total_playtime_seconds: u64,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -49,3 +49,34 @@ pub fn establish_connection_pool(database_url: &str) -> DbPool {
         .build(manager)
         .expect("Failed to create database pool.")
 }
+
+pub fn upsert_player_link(conn: &mut SqliteConnection, steam_id: &str, bm_id: &str) -> QueryResult<usize> {
+    use crate::schema::player_links::dsl as pl;
+    use chrono::Utc;
+
+    let now = Utc::now().naive_utc();
+    let new_link = models::NewPlayerLink {
+        steam_id,
+        bm_id,
+    };
+
+    diesel::insert_into(pl::player_links)
+        .values(&new_link)
+        .on_conflict(pl::steam_id)
+        .do_update()
+        .set((
+            pl::bm_id.eq(bm_id),
+            pl::updated_at.eq(now)
+        ))
+        .execute(conn)
+}
+
+pub fn get_bm_id_for_steam_id(conn: &mut SqliteConnection, steam_id_val: &str) -> QueryResult<Option<String>> {
+    use crate::schema::player_links::dsl as pl;
+
+    pl::player_links
+        .filter(pl::steam_id.eq(steam_id_val))
+        .select(pl::bm_id)
+        .first::<String>(conn)
+        .optional()
+}

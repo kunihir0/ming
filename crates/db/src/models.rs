@@ -2,8 +2,26 @@ use crate::schema::{
     fcm_credentials, guild_configs, paired_servers, pairing_requests, player_stats,
     server_channels, server_settings, sessions, user_rustplus_credentials, users,
     vending_subscriptions, track_groups, tracked_players, player_name_history,
-    track_notifications_config,
+    track_notifications_config, player_links,
 };
+use diesel::prelude::*;
+use chrono::NaiveDateTime;
+
+#[derive(Queryable, Selectable, Insertable, Identifiable, AsChangeset, Debug, Clone)]
+#[diesel(table_name = player_links)]
+#[diesel(primary_key(steam_id))]
+pub struct PlayerLink {
+    pub steam_id: String,
+    pub bm_id: String,
+    pub updated_at: NaiveDateTime,
+}
+
+#[derive(Insertable, Debug, Clone)]
+#[diesel(table_name = player_links)]
+pub struct NewPlayerLink<'a> {
+    pub steam_id: &'a str,
+    pub bm_id: &'a str,
+}
 use diesel::prelude::*;
 
 #[derive(Queryable, Selectable, Insertable, Identifiable, AsChangeset, Debug, Clone)]

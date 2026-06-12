@@ -1,0 +1,5 @@
+CREATE TABLE player_links (
+    steam_id TEXT PRIMARY KEY NOT NULL,
+    bm_id TEXT NOT NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

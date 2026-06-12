@@ -88,7 +88,7 @@ impl SteamService {
         )
     }
 
-    async fn get_profile_content_by_steam_id(&self, steam_id: &str) -> Result<String> {
+    pub async fn get_profile_content_by_steam_id(&self, steam_id: &str) -> Result<String> {
         {
             let cache = self.steam_profiles.read().await;
             if let Some(content) = cache.get(steam_id) {

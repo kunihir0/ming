@@ -4,3 +4,4 @@ pub mod watchdog;
 pub mod dashboard;
 pub mod commands;
 pub mod tts;
+pub mod hours_cmd;

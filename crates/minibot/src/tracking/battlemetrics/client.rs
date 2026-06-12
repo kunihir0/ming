@@ -73,6 +73,7 @@ impl BmScraperClient {
         let mut current_name = player_id.to_string();
         let mut is_online = false;
         let mut current_server_id = None;
+        let mut total_playtime_seconds = 0;
 
         if let Some(json) = Self::extract_bootstrap_json(&html) {
             if let Some(name) = json.pointer(&format!("/state/players/players/{}/name", player_id)).and_then(|v| v.as_str()) {
@@ -83,10 +84,12 @@ impl BmScraperClient {
 
             if let Some(servers) = json.pointer(&format!("/state/players/serverInfo/{}", player_id)).and_then(|v| v.as_object()) {
                 for (_, server_info) in servers {
+                    if let Some(time_played) = server_info.get("timePlayed").and_then(|v| v.as_u64()) {
+                        total_playtime_seconds += time_played;
+                    }
                     if server_info.get("online").and_then(|v| v.as_bool()).unwrap_or(false) {
                         is_online = true;
                         current_server_id = server_info.get("serverId").and_then(|v| v.as_str()).map(|s| s.to_string());
-                        break;
                     }
                 }
             }
@@ -99,6 +102,7 @@ impl BmScraperClient {
             current_name,
             is_online,
             current_server_id,
+            total_playtime_seconds,
         })
     }
 

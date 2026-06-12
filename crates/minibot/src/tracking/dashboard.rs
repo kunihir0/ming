@@ -132,7 +132,7 @@ pub async fn refresh_dashboard(http: &serenity::Http, db_pool: &DbPool, server_i
         desc.push_str("\n");
     }
     
-    desc.push_str("```yaml\nHelp Menu:\nAdd Person: Track a new player by Steam ID\nRemove Person: Stop tracking a player\nAssign to Group: Move a player into a group\nCreate Group: Make a new group folder\nDelete Group: Remove a group and unassign its members\nClear Aliases: Reset a player's name history\n```");
+    desc.push_str("```yaml\nHelp Menu:\nAdd Person: Track a new player by Steam ID\nRemove Person: Stop tracking a player\nAssign to Group: Move a player into a group\nCreate Group: Make a new group folder\nDelete Group: Remove a group and unassign its members\nClear Aliases: Reset a player's name history\nClear All: Erase all players, groups, and data\nCheck Hours: View hours for a tracked player on this server\n```");
     
     embed = embed.description(desc);
     
@@ -146,6 +146,9 @@ pub async fn refresh_dashboard(http: &serenity::Http, db_pool: &DbPool, server_i
         serenity::CreateButton::new(format!("track_assign_{}", server_id_filter))
             .label("Assign to Group")
             .style(serenity::ButtonStyle::Secondary),
+        serenity::CreateButton::new(format!("track_checkhours_{}", server_id_filter))
+            .label("Check Hours")
+            .style(serenity::ButtonStyle::Primary),
     ]);
     
     let row2 = serenity::CreateActionRow::Buttons(vec![
@@ -158,6 +161,9 @@ pub async fn refresh_dashboard(http: &serenity::Http, db_pool: &DbPool, server_i
         serenity::CreateButton::new(format!("track_clearaliases_{}", server_id_filter))
             .label("Clear Aliases")
             .style(serenity::ButtonStyle::Secondary),
+        serenity::CreateButton::new(format!("track_clearall_{}", server_id_filter))
+            .label("Clear All")
+            .style(serenity::ButtonStyle::Danger),
     ]);
     
     let builder = serenity::EditMessage::new().embed(embed).components(vec![row1, row2]);
@@ -238,12 +244,34 @@ pub async fn handle_component(ctx: &serenity::Context, component: &serenity::Com
                 ]);
             component.create_response(&ctx.http, CreateInteractionResponse::Modal(modal)).await?;
         },
+        "checkhours" => {
+            let modal = CreateModal::new(format!("track_checkhours_modal_{}", server_id), "Check Tracked Player Hours")
+                .components(vec![
+                    CreateActionRow::InputText(
+                        CreateInputText::new(serenity::InputTextStyle::Short, "Steam ID 64", "steam_id")
+                            .placeholder("7656119...")
+                            .required(true)
+                    )
+                ]);
+            component.create_response(&ctx.http, CreateInteractionResponse::Modal(modal)).await?;
+        },
         "clearaliases" => {
             let modal = CreateModal::new(format!("track_clearaliases_modal_{}", server_id), "Clear Aliases")
                 .components(vec![
                     CreateActionRow::InputText(
                         CreateInputText::new(serenity::InputTextStyle::Short, "Steam ID 64", "steam_id")
                             .placeholder("7656119...")
+                            .required(true)
+                    )
+                ]);
+            component.create_response(&ctx.http, CreateInteractionResponse::Modal(modal)).await?;
+        },
+        "clearall" => {
+            let modal = CreateModal::new(format!("track_clearall_modal_{}", server_id), "Clear All Data")
+                .components(vec![
+                    CreateActionRow::InputText(
+                        CreateInputText::new(serenity::InputTextStyle::Short, "Type CONFIRM to erase everything", "confirm_text")
+                            .placeholder("CONFIRM")
                             .required(true)
                     )
                 ]);
@@ -392,6 +420,52 @@ pub async fn handle_modal(ctx: &serenity::Context, modal: &serenity::ModalIntera
                         .execute(&mut conn)?;
                 } else {
                     success_msg = format!("Player {} not found.", steam_id);
+                }
+            }
+        },
+        "clearall" => {
+            if let Some(confirm) = get_input("confirm_text") {
+                if confirm.trim() == "CONFIRM" {
+                    // Get all players for this server to delete their aliases
+                    let players = tracked_players::dsl::tracked_players
+                        .filter(tracked_players::dsl::server_id.eq(server_id))
+                        .load::<db::models::TrackedPlayer>(&mut conn)?;
+                    
+                    for p in players {
+                        diesel::delete(player_name_history::dsl::player_name_history.filter(player_name_history::dsl::tracked_player_id.eq(p.id)))
+                            .execute(&mut conn)?;
+                    }
+
+                    // Delete players
+                    diesel::delete(tracked_players::dsl::tracked_players.filter(tracked_players::dsl::server_id.eq(server_id)))
+                        .execute(&mut conn)?;
+
+                    // Delete groups
+                    diesel::delete(track_groups::dsl::track_groups.filter(track_groups::dsl::server_id.eq(server_id)))
+                        .execute(&mut conn)?;
+                        
+                    success_msg = "✅ All players, aliases, and groups have been permanently deleted.".to_string();
+                } else {
+                    success_msg = "❌ Confirmation failed. You must type exactly 'CONFIRM' to clear all data.".to_string();
+                }
+            }
+        },
+        "checkhours" => {
+            if let Some(steam_id) = get_input("steam_id") {
+                // Ensure player is tracked on this server and fetch their BM ID
+                if let Ok(player) = tracked_players::dsl::tracked_players
+                    .filter(tracked_players::dsl::server_id.eq(server_id))
+                    .filter(tracked_players::dsl::steam_id.eq(&steam_id))
+                    .first::<db::models::TrackedPlayer>(&mut conn)
+                {
+                    let bm_id = player.bm_player_id;
+                    if let Ok(hours_text) = crate::tracking::hours_cmd::get_player_hours_text(db_pool, steam_id, bm_id).await {
+                        success_msg = hours_text;
+                    } else {
+                        success_msg = "❌ Failed to fetch player hours.".to_string();
+                    }
+                } else {
+                    success_msg = "❌ Player is not tracked on this dashboard. Use 'Add Person' first.".to_string();
                 }
             }
         },

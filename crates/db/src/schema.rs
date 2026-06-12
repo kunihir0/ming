@@ -11,6 +11,14 @@ diesel::table! {
 }
 
 diesel::table! {
+    player_links (steam_id) {
+        steam_id -> Text,
+        bm_id -> Text,
+        updated_at -> Timestamp,
+    }
+}
+
+diesel::table! {
     vending_subscriptions (id) {
         id -> Integer,
         discord_id -> Nullable<Text>,
