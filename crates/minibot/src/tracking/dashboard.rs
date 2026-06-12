@@ -132,7 +132,7 @@ pub async fn refresh_dashboard(http: &serenity::Http, db_pool: &DbPool, server_i
         desc.push_str("\n");
     }
     
-    desc.push_str("```yaml\nHelp Menu:\nAdd Person: Track a new player by Steam ID\nRemove Person: Stop tracking a player\nAssign to Group: Move a player into a group\nCreate Group: Make a new group folder\nDelete Group: Remove a group and unassign its members\nClear Aliases: Reset a player's name history\nClear All: Erase all players, groups, and data\nCheck Hours: View hours for a tracked player on this server\n```");
+    desc.push_str("```yaml\nHelp Menu:\nAdd Person: Track a new player by Steam ID\nRemove Person: Stop tracking a player\nAssign to Group: Move a player into a group\nCreate Group: Make a new group folder\nDelete Group: Remove a group and unassign its members\nClear Aliases: Reset a player's name history\nClear All: Erase all players, groups, and data\nCheck Hours: View hours for a tracked player on this server\nCheck Atlas: View detailed Atlas Rust player info\n```");
     
     embed = embed.description(desc);
     
@@ -149,6 +149,9 @@ pub async fn refresh_dashboard(http: &serenity::Http, db_pool: &DbPool, server_i
         serenity::CreateButton::new(format!("track_checkhours_{}", server_id_filter))
             .label("Check Hours")
             .style(serenity::ButtonStyle::Primary),
+        serenity::CreateButton::new(format!("track_checkatlas_{}", server_id_filter))
+            .label("Check Atlas")
+            .style(serenity::ButtonStyle::Success),
     ]);
     
     let row2 = serenity::CreateActionRow::Buttons(vec![
@@ -246,6 +249,17 @@ pub async fn handle_component(ctx: &serenity::Context, component: &serenity::Com
         },
         "checkhours" => {
             let modal = CreateModal::new(format!("track_checkhours_modal_{}", server_id), "Check Tracked Player Hours")
+                .components(vec![
+                    CreateActionRow::InputText(
+                        CreateInputText::new(serenity::InputTextStyle::Short, "Steam ID 64", "steam_id")
+                            .placeholder("7656119...")
+                            .required(true)
+                    )
+                ]);
+            component.create_response(&ctx.http, CreateInteractionResponse::Modal(modal)).await?;
+        },
+        "checkatlas" => {
+            let modal = CreateModal::new(format!("track_checkatlas_modal_{}", server_id), "Check Atlas Stats")
                 .components(vec![
                     CreateActionRow::InputText(
                         CreateInputText::new(serenity::InputTextStyle::Short, "Steam ID 64", "steam_id")
@@ -463,6 +477,53 @@ pub async fn handle_modal(ctx: &serenity::Context, modal: &serenity::ModalIntera
                         success_msg = hours_text;
                     } else {
                         success_msg = "❌ Failed to fetch player hours.".to_string();
+                    }
+                } else {
+                    success_msg = "❌ Player is not tracked on this dashboard. Use 'Add Person' first.".to_string();
+                }
+            }
+        },
+        "checkatlas" => {
+            if let Some(steam_id) = get_input("steam_id") {
+                if let Ok(player) = tracked_players::dsl::tracked_players
+                    .filter(tracked_players::dsl::server_id.eq(server_id))
+                    .filter(tracked_players::dsl::steam_id.eq(&steam_id))
+                    .first::<db::models::TrackedPlayer>(&mut conn)
+                {
+                    match crate::tracking::atlas::client::AtlasClient::new() {
+                        Ok(client) => {
+                            match client.get_player(&steam_id).await {
+                                Ok(res) => {
+                                    if let Some(ap) = res.player {
+                                        // Auto-link the BM ID from Atlas
+                                        if let Some(atlas_bm_id) = ap.bm_player_id {
+                                            let atlas_bm_str = atlas_bm_id.to_string();
+                                            let _ = diesel::update(tracked_players::dsl::tracked_players.filter(tracked_players::dsl::id.eq(player.id)))
+                                                .set(tracked_players::dsl::bm_player_id.eq(Some(&atlas_bm_str)))
+                                                .execute(&mut conn);
+                                            let _ = db::upsert_player_link(&mut conn, &steam_id, &atlas_bm_str);
+                                        }
+
+                                        let mut txt = format!("```asciidoc\n= Atlas Player Info =\n\n* Name: {}\n* Steam ID: {}\n", ap.name, ap.steam_id);
+                                        if let Some(b) = ap.bm_player_id { txt.push_str(&format!("* BattleMetrics ID: {}\n", b)); }
+                                        if let Some(ls) = ap.last_online { txt.push_str(&format!("* Last Online: {}\n", ls)); }
+                                        txt.push_str(&format!("\n[Hours]\n* Atlas Hours: {}\n* BM Hours: {} hrs\n", ap.atlas_hours, ap.bm_hours / 3600));
+                                        txt.push_str(&format!("\n[Account]\n* Premium: {}\n* Banned: {}\n```", ap.is_premium, ap.is_banned));
+                                        success_msg = txt;
+                                    } else if let Some(msg) = res.message {
+                                        success_msg = format!("❌ Atlas API Error: {}", msg);
+                                    } else {
+                                        success_msg = "❌ Player not found on Atlas Rust.".to_string();
+                                    }
+                                }
+                                Err(e) => {
+                                    success_msg = format!("❌ Failed to query Atlas API: {}", e);
+                                }
+                            }
+                        }
+                        Err(_) => {
+                            success_msg = "❌ Atlas API token not configured in .env (ATLAS_JWT_TOKEN).".to_string();
+                        }
                     }
                 } else {
                     success_msg = "❌ Player is not tracked on this dashboard. Use 'Add Person' first.".to_string();
