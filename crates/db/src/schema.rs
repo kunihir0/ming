@@ -205,6 +205,21 @@ diesel::joinable!(track_notifications_config -> paired_servers (server_id));
 diesel::joinable!(tracked_players -> paired_servers (server_id));
 diesel::joinable!(tracked_players -> track_groups (group_id));
 
+diesel::table! {
+    player_sessions (id) {
+        id -> Integer,
+        tracked_player_id -> Integer,
+        server_id -> Integer,
+        steam_id -> Text,
+        joined_at -> Timestamp,
+        left_at -> Nullable<Timestamp>,
+        duration_secs -> Nullable<Integer>,
+    }
+}
+
+diesel::joinable!(player_sessions -> tracked_players (tracked_player_id));
+diesel::joinable!(player_sessions -> paired_servers (server_id));
+
 diesel::allow_tables_to_appear_in_same_query!(
     fcm_credentials,
     guild_configs,
@@ -221,4 +236,5 @@ diesel::allow_tables_to_appear_in_same_query!(
     track_groups,
     track_notifications_config,
     tracked_players,
+    player_sessions,
 );

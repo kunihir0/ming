@@ -106,6 +106,14 @@ impl TrackerWatchdog {
                                 ))
                                 .execute(&mut conn)?;
                         }
+                        
+                        // Analytics: Record session
+                        if is_currently_online {
+                            let _ = crate::tracking::analytics::recorder::start_session(&self.db_pool, player.id, paired.id, &player.steam_id);
+                        } else {
+                            let _ = crate::tracking::analytics::recorder::end_session(&self.db_pool, player.id);
+                        }
+                        
                         needs_refresh = true;
 
                         // Check TTS config

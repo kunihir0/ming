@@ -132,7 +132,7 @@ pub async fn refresh_dashboard(http: &serenity::Http, db_pool: &DbPool, server_i
         desc.push_str("\n");
     }
     
-    desc.push_str("```yaml\nHelp Menu:\nAdd Person: Track a new player by Steam ID\nRemove Person: Stop tracking a player\nAssign to Group: Move a player into a group\nCreate Group: Make a new group folder\nDelete Group: Remove a group and unassign its members\nClear Aliases: Reset a player's name history\nClear All: Erase all players, groups, and data\nCheck Hours: View hours for a tracked player on this server\nCheck Atlas: View detailed Atlas Rust player info\n```");
+    desc.push_str("```yaml\nHelp Menu:\nAdd Person: Track a new player by Steam ID\nRemove Person: Stop tracking a player\nAssign to Group: Move a player into a group\nCreate Group: Make a new group folder\nDelete Group: Remove a group and unassign its members\nClear Aliases: Reset a player's name history\nClear All: Erase all players, groups, and data\nCheck Hours: View hours for a tracked player on this server\nCheck Atlas: View detailed Atlas Rust player info\nAnalytics: View graphs and play history for a player\n```");
     
     embed = embed.description(desc);
     
@@ -146,12 +146,6 @@ pub async fn refresh_dashboard(http: &serenity::Http, db_pool: &DbPool, server_i
         serenity::CreateButton::new(format!("track_assign_{}", server_id_filter))
             .label("Assign to Group")
             .style(serenity::ButtonStyle::Secondary),
-        serenity::CreateButton::new(format!("track_checkhours_{}", server_id_filter))
-            .label("Check Hours")
-            .style(serenity::ButtonStyle::Primary),
-        serenity::CreateButton::new(format!("track_checkatlas_{}", server_id_filter))
-            .label("Check Atlas")
-            .style(serenity::ButtonStyle::Success),
     ]);
     
     let row2 = serenity::CreateActionRow::Buttons(vec![
@@ -169,7 +163,19 @@ pub async fn refresh_dashboard(http: &serenity::Http, db_pool: &DbPool, server_i
             .style(serenity::ButtonStyle::Danger),
     ]);
     
-    let builder = serenity::EditMessage::new().embed(embed).components(vec![row1, row2]);
+    let row3 = serenity::CreateActionRow::Buttons(vec![
+        serenity::CreateButton::new(format!("track_checkhours_{}", server_id_filter))
+            .label("Check Hours")
+            .style(serenity::ButtonStyle::Primary),
+        serenity::CreateButton::new(format!("track_checkatlas_{}", server_id_filter))
+            .label("Check Atlas")
+            .style(serenity::ButtonStyle::Success),
+        serenity::CreateButton::new(format!("track_analytics_{}", server_id_filter))
+            .label("Analytics")
+            .style(serenity::ButtonStyle::Primary),
+    ]);
+    
+    let builder = serenity::EditMessage::new().embed(embed).components(vec![row1, row2, row3]);
     channel_id.edit_message(http, message_id, builder).await?;
     
     Ok(())
@@ -260,6 +266,17 @@ pub async fn handle_component(ctx: &serenity::Context, component: &serenity::Com
         },
         "checkatlas" => {
             let modal = CreateModal::new(format!("track_checkatlas_modal_{}", server_id), "Check Atlas Stats")
+                .components(vec![
+                    CreateActionRow::InputText(
+                        CreateInputText::new(serenity::InputTextStyle::Short, "Steam ID 64", "steam_id")
+                            .placeholder("7656119...")
+                            .required(true)
+                    )
+                ]);
+            component.create_response(&ctx.http, CreateInteractionResponse::Modal(modal)).await?;
+        },
+        "analytics" => {
+            let modal = CreateModal::new(format!("track_analytics_modal_{}", server_id), "Player Analytics")
                 .components(vec![
                     CreateActionRow::InputText(
                         CreateInputText::new(serenity::InputTextStyle::Short, "Steam ID 64", "steam_id")
@@ -523,6 +540,48 @@ pub async fn handle_modal(ctx: &serenity::Context, modal: &serenity::ModalIntera
                         }
                         Err(_) => {
                             success_msg = "❌ Atlas API token not configured in .env (ATLAS_JWT_TOKEN).".to_string();
+                        }
+                    }
+                } else {
+                    success_msg = "❌ Player is not tracked on this dashboard. Use 'Add Person' first.".to_string();
+                }
+            }
+        },
+        "analytics" => {
+            if let Some(steam_id) = get_input("steam_id") {
+                if let Ok(player) = tracked_players::dsl::tracked_players
+                    .filter(tracked_players::dsl::server_id.eq(server_id))
+                    .filter(tracked_players::dsl::steam_id.eq(&steam_id))
+                    .first::<db::models::TrackedPlayer>(&mut conn)
+                {
+                    match crate::tracking::analytics::report::get_player_analytics(db_pool, player.id) {
+                        Ok(data) => {
+                            let mut embed = serenity::builder::CreateEmbed::new()
+                                .title(format!("Analytics: {}", player.last_known_name.as_deref().unwrap_or("Unknown")))
+                                .color(0x5865F2)
+                                .field("Total Playtime", format!("{:.1} hrs", data.total_hours), true)
+                                .field("Sessions", data.session_count.to_string(), true)
+                                .field("Avg Session", format!("{:.0} mins", data.avg_session_mins), true);
+                                
+                            if let Some(peak) = data.peak_time_hour {
+                                embed = embed.field("Peak Hour", format!("{}:00 UTC", peak), true);
+                            }
+                            
+                            let mut builder = serenity::builder::CreateInteractionResponseFollowup::new()
+                                .ephemeral(true);
+                                
+                            if let Ok(chart_bytes) = crate::tracking::analytics::charts::generate_activity_chart(&data.daily_playtime) {
+                                let attachment = serenity::builder::CreateAttachment::bytes(chart_bytes, "chart.png");
+                                embed = embed.image("attachment://chart.png");
+                                builder = builder.add_file(attachment);
+                            }
+                            
+                            builder = builder.embed(embed);
+                            let _ = modal.create_followup(&ctx.http, builder).await;
+                            return Ok(());
+                        }
+                        Err(e) => {
+                            success_msg = format!("❌ Failed to fetch analytics: {}", e);
                         }
                     }
                 } else {

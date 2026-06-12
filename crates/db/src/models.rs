@@ -2,7 +2,7 @@ use crate::schema::{
     fcm_credentials, guild_configs, paired_servers, pairing_requests, player_stats,
     server_channels, server_settings, sessions, user_rustplus_credentials, users,
     vending_subscriptions, track_groups, tracked_players, player_name_history,
-    track_notifications_config, player_links,
+    track_notifications_config, player_links, player_sessions,
 };
 use diesel::prelude::*;
 use chrono::NaiveDateTime;
@@ -364,3 +364,26 @@ pub struct NewTrackNotificationsConfig {
     pub tts_enabled: i32,
 }
 
+/// A recorded player session tracking join/leave events.
+#[derive(Queryable, Selectable, Insertable, Identifiable, AsChangeset, Associations, Debug, Clone)]
+#[diesel(belongs_to(TrackedPlayer, foreign_key = tracked_player_id))]
+#[diesel(belongs_to(PairedServer, foreign_key = server_id))]
+#[diesel(table_name = player_sessions)]
+pub struct PlayerSession {
+    pub id: i32,
+    pub tracked_player_id: i32,
+    pub server_id: i32,
+    pub steam_id: String,
+    pub joined_at: chrono::NaiveDateTime,
+    pub left_at: Option<chrono::NaiveDateTime>,
+    pub duration_secs: Option<i32>,
+}
+
+/// Insertable struct for creating a new player session.
+#[derive(Insertable, Debug, Clone)]
+#[diesel(table_name = player_sessions)]
+pub struct NewPlayerSession {
+    pub tracked_player_id: i32,
+    pub server_id: i32,
+    pub steam_id: String,
+}

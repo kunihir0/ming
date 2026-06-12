@@ -1,6 +1,7 @@
 pub mod steam;
 pub mod battlemetrics;
 pub mod atlas;
+pub mod analytics;
 pub mod watchdog;
 pub mod dashboard;
 pub mod commands;
