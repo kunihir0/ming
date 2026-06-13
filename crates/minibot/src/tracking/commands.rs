@@ -355,3 +355,83 @@ async fn group_assign(
     
     Ok(())
 }
+
+/// Find a player's current server using BattleMetrics
+#[poise::command(slash_command, category = "Player Tracking")]
+pub async fn find(
+    ctx: PoiseContext<'_>,
+    #[description = "Steam ID 64"] steam_id: String,
+) -> Result<(), Error> {
+    ctx.defer().await?;
+    
+    let mut conn = ctx.data().db_pool.get()?;
+    use db::schema::tracked_players::dsl as players_dsl;
+    
+    // Check if we have their BM ID
+    let bm_id_opt: Option<String> = players_dsl::tracked_players
+        .filter(players_dsl::steam_id.eq(&steam_id))
+        .filter(players_dsl::bm_player_id.is_not_null())
+        .select(players_dsl::bm_player_id)
+        .first::<Option<String>>(&mut conn)
+        .optional()?
+        .flatten();
+        
+    let bm_id = match bm_id_opt {
+        Some(id) => id,
+        None => {
+            // Try to resolve using Atlas
+            match crate::tracking::atlas::client::AtlasClient::new() {
+                Ok(client) => {
+                    match client.get_player(&steam_id).await {
+                        Ok(res) => {
+                            if let Some(ap) = res.player {
+                                if let Some(atlas_bm_id) = ap.bm_player_id {
+                                    let atlas_bm_str = atlas_bm_id.to_string();
+                                    // Cache it
+                                    let _ = db::upsert_player_link(&mut conn, &steam_id, &atlas_bm_str);
+                                    atlas_bm_str
+                                } else {
+                                    ctx.say(format!("❌ Could not find a BattleMetrics ID for Steam ID `{}` on Atlas.", steam_id)).await?;
+                                    return Ok(());
+                                }
+                            } else {
+                                ctx.say(format!("❌ Player not found on Atlas Rust. Cannot resolve BM ID.")).await?;
+                                return Ok(());
+                            }
+                        }
+                        Err(e) => {
+                            ctx.say(format!("❌ Failed to query Atlas API to resolve BM ID: {}", e)).await?;
+                            return Ok(());
+                        }
+                    }
+                }
+                Err(_) => {
+                    ctx.say(format!("❌ Player is not tracked and Atlas API is not configured. Cannot resolve BM ID.")).await?;
+                    return Ok(());
+                }
+            }
+        }
+    };
+    
+    // Scrape BM profile
+    let bm_client = crate::tracking::battlemetrics::client::BmScraperClient::new();
+    match bm_client.scrape_player_profile(&bm_id).await {
+        Ok(bm_player) => {
+            if bm_player.is_online {
+                if let Some(server_id) = bm_player.current_server_id {
+                    let server_name = bm_client.get_server_name(&server_id).await.unwrap_or_else(|_| "Unknown Server".to_string());
+                    ctx.say(format!("✅ **{}** is currently **ONLINE** on **{}** (Server ID: {})", bm_player.current_name, server_name, server_id)).await?;
+                } else {
+                    ctx.say(format!("✅ **{}** is currently **ONLINE**, but their current server is hidden or unavailable.", bm_player.current_name)).await?;
+                }
+            } else {
+                ctx.say(format!("❌ **{}** is currently **OFFLINE**.", bm_player.current_name)).await?;
+            }
+        }
+        Err(e) => {
+            ctx.say(format!("❌ Failed to fetch BattleMetrics profile for BM ID `{}`: {}", bm_id, e)).await?;
+        }
+    }
+    
+    Ok(())
+}

@@ -10,7 +10,7 @@ pub mod tracking;
 
 use crate::connection_manager::ConnectionManager;
 use crate::framework::{CommandRegistry, MinibotData, ReplyTarget, UnifiedContext};
-use crate::tracking::commands::{track, TrackCommand};
+use crate::tracking::commands::{track, find, TrackCommand};
 use crate::tracking::hours_cmd::hours;
 use crate::team::team;
 use crate::vending::{VendingListCommand, VendingSearchCommand, VendingSubsCommand, VendingDumpCommand};
@@ -570,7 +570,7 @@ async fn main() -> anyhow::Result<()> {
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
-            commands: vec![v(), server(), credentials(), set_reply_channel(), track(), help(), team(), hours()],
+            commands: vec![v(), server(), credentials(), set_reply_channel(), track(), find(), help(), team(), hours()],
             event_handler: |ctx, event, _framework, data| {
                 Box::pin(async move {
                     if let poise::serenity_prelude::FullEvent::InteractionCreate { interaction } = event {

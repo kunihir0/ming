@@ -65,36 +65,35 @@ impl BmScraperClient {
         })
     }
 
-    /// Fetches a player page and parses their online status and current name.
+    /// Fetches a player page via the official API to avoid Cloudflare blocks.
     pub async fn scrape_player_profile(&self, player_id: &str) -> Result<BmPlayer> {
-        let url = format!("https://www.battlemetrics.com/players/{}", player_id);
-        let html = self.http.get(&url).send().await?.error_for_status()?.text().await?;
+        let url = format!("https://api.battlemetrics.com/players/{}?include=server", player_id);
+        let resp = self.http.get(&url).send().await?.error_for_status()?;
+        let json: serde_json::Value = resp.json().await?;
         
         let mut current_name = player_id.to_string();
+        if let Some(name) = json.pointer("/data/attributes/name").and_then(|v| v.as_str()) {
+            current_name = name.to_string();
+        }
+
         let mut is_online = false;
         let mut current_server_id = None;
         let mut total_playtime_seconds = 0;
 
-        if let Some(json) = Self::extract_bootstrap_json(&html) {
-            if let Some(name) = json.pointer(&format!("/state/players/players/{}/name", player_id)).and_then(|v| v.as_str()) {
-                current_name = name.to_string();
-            } else {
-                anyhow::bail!("storeBootstrap JSON was found, but player name was missing. The payload might be incomplete due to rate limits.");
-            }
-
-            if let Some(servers) = json.pointer(&format!("/state/players/serverInfo/{}", player_id)).and_then(|v| v.as_object()) {
-                for (_, server_info) in servers {
-                    if let Some(time_played) = server_info.get("timePlayed").and_then(|v| v.as_u64()) {
-                        total_playtime_seconds += time_played;
-                    }
-                    if server_info.get("online").and_then(|v| v.as_bool()).unwrap_or(false) {
-                        is_online = true;
-                        current_server_id = server_info.get("serverId").and_then(|v| v.as_str()).map(|s| s.to_string());
+        if let Some(included) = json.get("included").and_then(|v| v.as_array()) {
+            for item in included {
+                if item.get("type").and_then(|v| v.as_str()) == Some("server") {
+                    if let Some(meta) = item.get("meta") {
+                        if let Some(time) = meta.get("timePlayed").and_then(|v| v.as_u64()) {
+                            total_playtime_seconds += time;
+                        }
+                        if meta.get("online").and_then(|v| v.as_bool()).unwrap_or(false) {
+                            is_online = true;
+                            current_server_id = item.get("id").and_then(|v| v.as_str()).map(|s| s.to_string());
+                        }
                     }
                 }
             }
-        } else {
-            anyhow::bail!("No storeBootstrap JSON found on player profile page. Possibly rate limited or blocked.");
         }
 
         Ok(BmPlayer {
@@ -164,5 +163,17 @@ impl BmScraperClient {
         
         handle_failure().await;
         Ok(None)
+    }
+
+    pub async fn get_server_name(&self, server_id: &str) -> Result<String> {
+        let url = format!("https://api.battlemetrics.com/servers/{}", server_id);
+        let resp = self.http.get(&url).send().await?.error_for_status()?;
+        let json: serde_json::Value = resp.json().await?;
+        
+        if let Some(name) = json.pointer("/data/attributes/name").and_then(|v| v.as_str()) {
+            Ok(name.to_string())
+        } else {
+            anyhow::bail!("Server name not found in response");
+        }
     }
 }
