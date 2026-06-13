@@ -1,0 +1,6 @@
+[submodule "crates/push-receiver"]
+	path = crates/push-receiver
+	url = file:///C:/Users/baobao/Documents/source/bots/push-receiver
+[submodule "crates/rustplus"]
+	path = crates/rustplus
+	url = file:///C:/Users/baobao/Documents/source/bots/rustplus
