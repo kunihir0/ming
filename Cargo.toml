@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/api",
+members = ["crates/a2s","crates/api",
     "crates/bot", "crates/cli", "crates/db",
     "crates/minibot",
     "crates/push-receiver",
