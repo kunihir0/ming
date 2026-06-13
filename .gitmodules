@@ -1,6 +1,6 @@
 [submodule "crates/push-receiver"]
 	path = crates/push-receiver
-	url = file:///C:/Users/baobao/Documents/source/bots/push-receiver
+	url = https://github.com/kunihir0/push-receiver.git
 [submodule "crates/rustplus"]
 	path = crates/rustplus
-	url = file:///C:/Users/baobao/Documents/source/bots/rustplus
+	url = https://github.com/kunihir0/rustplus.git
