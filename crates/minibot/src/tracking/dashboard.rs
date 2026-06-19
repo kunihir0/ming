@@ -132,7 +132,7 @@ pub async fn refresh_dashboard(http: &serenity::Http, db_pool: &DbPool, server_i
         desc.push_str("\n");
     }
     
-    desc.push_str("```yaml\nHelp Menu:\nAdd Person: Track a new player by Steam ID\nRemove Person: Stop tracking a player\nAssign to Group: Move a player into a group\nCreate Group: Make a new group folder\nDelete Group: Remove a group and unassign its members\nClear Aliases: Reset a player's name history\nClear All: Erase all players, groups, and data\nCheck Hours: View hours for a tracked player on this server\nCheck Atlas: View detailed Atlas Rust player info\nAnalytics: View graphs and play history for a player\n```");
+    desc.push_str("```yaml\nHelp Menu:\nAdd Person: Track a new player by Steam ID\nRemove Person: Stop tracking a player\nAssign to Group: Move a player into a group\nCreate Group: Make a new group folder\nDelete Group: Remove a group and unassign its members\nClear Aliases: Reset a player's name history\nClear All: Erase all players, groups, and data\nCheck Hours: View hours for a tracked player on this server\nCheck Atlas: View detailed Atlas Rust player info\nAnalytics: View graphs and play history for a player\nGet BM ID: Check DB for linked BM ID\n```");
     
     embed = embed.description(desc);
     
@@ -173,6 +173,9 @@ pub async fn refresh_dashboard(http: &serenity::Http, db_pool: &DbPool, server_i
         serenity::CreateButton::new(format!("track_analytics_{}", server_id_filter))
             .label("Analytics")
             .style(serenity::ButtonStyle::Primary),
+        serenity::CreateButton::new(format!("track_getbmid_{}", server_id_filter))
+            .label("Get BM ID")
+            .style(serenity::ButtonStyle::Secondary),
     ]);
     
     let builder = serenity::EditMessage::new().embed(embed).components(vec![row1, row2, row3]);
@@ -277,6 +280,17 @@ pub async fn handle_component(ctx: &serenity::Context, component: &serenity::Com
         },
         "analytics" => {
             let modal = CreateModal::new(format!("track_analytics_modal_{}", server_id), "Player Analytics")
+                .components(vec![
+                    CreateActionRow::InputText(
+                        CreateInputText::new(serenity::InputTextStyle::Short, "Steam ID 64", "steam_id")
+                            .placeholder("7656119...")
+                            .required(true)
+                    )
+                ]);
+            component.create_response(&ctx.http, CreateInteractionResponse::Modal(modal)).await?;
+        },
+        "getbmid" => {
+            let modal = CreateModal::new(format!("track_getbmid_modal_{}", server_id), "Get Linked BM ID")
                 .components(vec![
                     CreateActionRow::InputText(
                         CreateInputText::new(serenity::InputTextStyle::Short, "Steam ID 64", "steam_id")
@@ -583,6 +597,23 @@ pub async fn handle_modal(ctx: &serenity::Context, modal: &serenity::ModalIntera
                         Err(e) => {
                             success_msg = format!("❌ Failed to fetch analytics: {}", e);
                         }
+                    }
+                } else {
+                    success_msg = "❌ Player is not tracked on this dashboard. Use 'Add Person' first.".to_string();
+                }
+            }
+        },
+        "getbmid" => {
+            if let Some(steam_id) = get_input("steam_id") {
+                if let Ok(player) = tracked_players::dsl::tracked_players
+                    .filter(tracked_players::dsl::server_id.eq(server_id))
+                    .filter(tracked_players::dsl::steam_id.eq(&steam_id))
+                    .first::<db::models::TrackedPlayer>(&mut conn)
+                {
+                    if let Some(bm_id) = player.bm_player_id {
+                        success_msg = format!("✅ BattleMetrics ID for {}: {}", steam_id, bm_id);
+                    } else {
+                        success_msg = format!("❌ No BM ID linked for {}", steam_id);
                     }
                 } else {
                     success_msg = "❌ Player is not tracked on this dashboard. Use 'Add Person' first.".to_string();
