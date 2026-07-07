@@ -1,3 +1,4 @@
+use std::sync::LazyLock;
 use reqwest::Client;
 use scraper::{Html, Selector};
 use serde_json::Value;
@@ -10,9 +11,14 @@ use crate::models::{BansInfo, SteamIdFriend};
 
 const STEAM_ID_64_BASE: u64 = 76561197960265728;
 
+/// Converts a Steam account ID (32-bit) to a Steam ID 64.
+#[must_use]
 pub fn account_id_to_steam_id64(account_id: u32) -> String {
-    (account_id as u64 + STEAM_ID_64_BASE).to_string()
+    (u64::from(account_id) + STEAM_ID_64_BASE).to_string()
 }
+
+static SELECTOR_ISLAND: LazyLock<Selector> =
+    LazyLock::new(|| Selector::parse(r#"astro-island[component-url*="FriendsPage"]"#).unwrap());
 
 pub struct SteamIdDotComService {
     client: Client,
@@ -22,6 +28,8 @@ pub struct SteamIdDotComService {
 }
 
 impl SteamIdDotComService {
+    /// Create a new `SteamIdComService`.
+    #[must_use]
     pub fn new(debug: bool) -> Self {
         Self {
             client: Client::builder()
@@ -30,50 +38,55 @@ impl SteamIdDotComService {
                 .unwrap_or_else(|_| Client::new()),
             debug,
             request_delay: Duration::from_secs(3),
-            last_request_time: Arc::new(Mutex::new(Instant::now() - Duration::from_secs(3))),
-        }
-    }
-
-    fn log(&self, msg: &str) {
-        if self.debug {
-            println!("[SteamIdDotCom] {}", msg);
+            last_request_time: Arc::new(Mutex::new(Instant::now().checked_sub(Duration::from_secs(3)).unwrap_or_else(Instant::now))),
         }
     }
 
     async fn request(&self, url: &str) -> Result<String> {
-        let mut last_req = self.last_request_time.lock().await;
-        let now = Instant::now();
-        let elapsed = now.duration_since(*last_req);
+        let wait_time = {
+            let mut last_req = self.last_request_time.lock().await;
+            let now = Instant::now();
+            let target = *last_req + self.request_delay;
 
-        if elapsed < self.request_delay {
-            let wait_time = self.request_delay - elapsed;
-            self.log(&format!(
-                "Rate limiting: Waiting {}ms...",
-                wait_time.as_millis()
-            ));
-            tokio::time::sleep(wait_time).await;
+            if target > now {
+                let wait = target.duration_since(now);
+                *last_req = target;
+                Some(wait)
+            } else {
+                *last_req = now;
+                None
+            }
+        };
+
+        if let Some(wait) = wait_time {
+            if self.debug {
+                tracing::debug!(wait_ms = wait.as_millis(), "Rate limiting: Waiting...");
+            }
+            tokio::time::sleep(wait).await;
         }
 
-        *last_req = Instant::now();
-
-        self.log(&format!("Requesting: {}", url));
+        if self.debug {
+            tracing::debug!(url = %url, "Requesting");
+        }
         let response = self.client.get(url).send().await?.error_for_status()?;
         Ok(response.text().await?)
     }
 
+    #[must_use]
     fn url_friends(&self, steam_id64: &str) -> String {
-        format!("https://www.steamid.com/profiles/{}/friends", steam_id64)
+        format!("https://www.steamid.com/profiles/{steam_id64}/friends")
     }
 
     /// Decodes the Astro island props serialization format
+    #[allow(clippy::collapsible_if, clippy::match_same_arms)] // Keeping nested logic for clarity with astro components
     fn decode_astro_value(val: &Value) -> Value {
-        if let Value::Array(arr) = val
-            && arr.len() == 2 {
+        if let Value::Array(arr) = val {
+            if arr.len() == 2 {
                 let type_tag = &arr[0];
                 let inner_val = &arr[1];
-
-                if let Value::Number(tag_num) = type_tag
-                    && let Some(tag) = tag_num.as_u64() {
+                
+                if let Value::Number(tag_num) = type_tag {
+                    if let Some(tag) = tag_num.as_u64() {
                         match tag {
                             0 => return inner_val.clone(), // Primitive
                             1 => {
@@ -85,11 +98,14 @@ impl SteamIdDotComService {
                                 }
                                 return inner_val.clone();
                             }
+                            2 => return inner_val.clone(), // Regexp
                             3 => return inner_val.clone(), // Date string
                             _ => return inner_val.clone(),
                         }
                     }
+                }
             }
+        }
         val.clone()
     }
 
@@ -101,14 +117,18 @@ impl SteamIdDotComService {
         decoded
     }
 
+    /// Fetches friends list from steamid.com.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails, or if parsing the Astro Island payload fails.
+    #[allow(clippy::too_many_lines)] // Allowed to keep all parsing logic localized
     pub async fn get_friends(&self, steam_id64: &str) -> Result<Vec<SteamIdFriend>> {
         let url = self.url_friends(steam_id64);
         let content = self.request(&url).await?;
 
         let document = Html::parse_document(&content);
-        let island_sel = Selector::parse(r#"astro-island[component-url*="FriendsPage"]"#).unwrap();
 
-        let island = document.select(&island_sel).next().ok_or_else(|| {
+        let island = document.select(&SELECTOR_ISLAND).next().ok_or_else(|| {
             TeamDetectorError::NotFound("No FriendsPage island found".to_string())
         })?;
 
@@ -118,7 +138,7 @@ impl SteamIdDotComService {
             .ok_or_else(|| TeamDetectorError::NotFound("No props attribute found".to_string()))?;
 
         let raw_props: Value = serde_json::from_str(props_attr)
-            .map_err(|e| TeamDetectorError::Parse(format!("Failed to parse JSON props: {}", e)))?;
+            .map_err(|e| TeamDetectorError::Parse(format!("Failed to parse JSON props: {e}")))?;
 
         let decoded_props = match raw_props {
             Value::Object(map) => Self::decode_astro_object(&map),
@@ -146,10 +166,12 @@ impl SteamIdDotComService {
             if let Value::Object(map) = raw_friend {
                 let f = Self::decode_astro_object(map);
 
-                let account_id = f
-                    .get("friend_account_id")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0) as u32;
+                let account_id = u32::try_from(
+                    f.get("friend_account_id")
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(0),
+                )
+                .unwrap_or(0);
                 if account_id == 0 {
                     continue;
                 }
@@ -177,21 +199,25 @@ impl SteamIdDotComService {
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string(),
-                    depth: f.get("depth").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
-                    friend_of: f.get("friend_of").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
+                    depth: u32::try_from(f.get("depth").and_then(serde_json::Value::as_u64).unwrap_or(0)).unwrap_or(0),
+                    friend_of: u32::try_from(f.get("friend_of").and_then(serde_json::Value::as_u64).unwrap_or(0)).unwrap_or(0),
                     bans: BansInfo {
                         community_banned: f
                             .get("community_banned")
-                            .and_then(|v| v.as_bool())
+                            .and_then(serde_json::Value::as_bool)
                             .unwrap_or(false),
-                        vac_bans: f
-                            .get("number_of_vac_bans")
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(0) as u32,
-                        game_bans: f
-                            .get("number_of_game_bans")
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(0) as u32,
+                        vac_bans: u32::try_from(
+                            f.get("number_of_vac_bans")
+                                .and_then(serde_json::Value::as_u64)
+                                .unwrap_or(0),
+                        )
+                        .unwrap_or(0),
+                        game_bans: u32::try_from(
+                            f.get("number_of_game_bans")
+                                .and_then(serde_json::Value::as_u64)
+                                .unwrap_or(0),
+                        )
+                        .unwrap_or(0),
                         economy_ban: f
                             .get("economy_ban")
                             .and_then(|v| v.as_str())
@@ -200,28 +226,30 @@ impl SteamIdDotComService {
                     },
                     mutual_friends: f
                         .get("mutual_friends")
-                        .and_then(|v| v.as_array())
+                        .and_then(serde_json::Value::as_array)
                         .map(|arr| {
                             arr.iter()
-                                .filter_map(|x| x.as_u64().map(|n| n as u32))
+                                .filter_map(|x| x.as_u64().map(|n| u32::try_from(n).unwrap_or(0)))
                                 .collect()
                         })
                         .unwrap_or_default(),
                     total_friends: f
                         .get("total_friends")
-                        .and_then(|v| v.as_u64())
-                        .map(|v| v as u32),
+                        .and_then(serde_json::Value::as_u64)
+                        .map(|v| u32::try_from(v).unwrap_or(0)),
                 };
 
                 friends.push(friend);
             }
         }
 
-        self.log(&format!(
-            "get_friends({}) -> {} friends",
-            steam_id64,
-            friends.len()
-        ));
+        if self.debug {
+            tracing::debug!(
+                steam_id64 = %steam_id64,
+                friends_count = friends.len(),
+                "get_friends result"
+            );
+        }
         Ok(friends)
     }
 }

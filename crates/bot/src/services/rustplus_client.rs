@@ -121,7 +121,11 @@ pub async fn handle_discord_message(
     let channel_id_str = msg.channel_id.get().to_string();
 
     let server_channel: Option<ServerChannel> = sc_dsl::server_channels
-        .filter(sc_dsl::chat_channel_id.eq(&channel_id_str).or(sc_dsl::ai_channel_id.eq(&channel_id_str)))
+        .filter(
+            sc_dsl::chat_channel_id
+                .eq(&channel_id_str)
+                .or(sc_dsl::ai_channel_id.eq(&channel_id_str)),
+        )
         .first::<ServerChannel>(&mut conn)
         .optional()?;
 
@@ -130,17 +134,21 @@ pub async fn handle_discord_message(
             // Forward to AI Engine
             let server_id = sc.server_id;
             let text = msg.content.clone();
-            
+
             // We need to fetch vending machines via the map service.
-            let map_size = data.map_service.get_map_size(server_id, data).await.unwrap_or(4000);
+            let map_size = data
+                .map_service
+                .get_map_size(server_id, data)
+                .await
+                .unwrap_or(4000);
             let vms_result = data.map_service.get_vending_machines(server_id, data).await;
-            
+
             let http = _ctx.http.clone();
             let channel_id = msg.channel_id;
 
             tokio::spawn(async move {
                 let _ = channel_id.broadcast_typing(&http).await;
-                
+
                 let vms = vms_result.unwrap_or_default();
 
                 match crate::services::ai::chat_with_tools(server_id, &text, map_size, &vms).await {
@@ -152,7 +160,7 @@ pub async fn handle_discord_message(
                     }
                 }
             });
-            
+
             return Ok(());
         } else if Some(channel_id_str) == sc.chat_channel_id {
             // Standard Chat Bridge

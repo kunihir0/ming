@@ -1,11 +1,11 @@
-use std::sync::Arc;
-use std::time::Duration;
-use db::DbPool;
-use poise::serenity_prelude as serenity;
-use tracing::{error, info, debug};
 use crate::tracking::battlemetrics::client::BmScraperClient;
 use crate::tracking::steam::SteamService;
+use db::DbPool;
+use poise::serenity_prelude as serenity;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+use std::time::Duration;
+use tracing::{debug, error, info};
 
 pub struct TrackerWatchdog {
     db_pool: DbPool,
@@ -17,7 +17,11 @@ pub struct TrackerWatchdog {
 }
 
 impl TrackerWatchdog {
-    pub fn new(db_pool: DbPool, http: Arc<serenity::Http>, songbird_manager: Arc<songbird::Songbird>) -> Self {
+    pub fn new(
+        db_pool: DbPool,
+        http: Arc<serenity::Http>,
+        songbird_manager: Arc<songbird::Songbird>,
+    ) -> Self {
         let steam_client = Arc::new(SteamService::new().unwrap());
         Self {
             db_pool,
@@ -42,11 +46,11 @@ impl TrackerWatchdog {
     }
 
     async fn run_cycle(&self) -> anyhow::Result<()> {
-        use db::schema::tracked_players::dsl::*;
         use db::schema::paired_servers::dsl as servers_dsl;
         use db::schema::player_name_history::dsl as pnh;
+        use db::schema::tracked_players::dsl::*;
         use diesel::prelude::*;
-        
+
         let all_paired_servers = {
             let mut conn = self.db_pool.get()?;
             servers_dsl::paired_servers.load::<db::models::PairedServer>(&mut conn)?
@@ -54,7 +58,11 @@ impl TrackerWatchdog {
         let mut servers_to_refresh = HashSet::new();
 
         for paired in all_paired_servers {
-            let bm_server_id = match self.bm_client.scrape_server_id_by_ip(&paired.server_ip).await {
+            let bm_server_id = match self
+                .bm_client
+                .scrape_server_id_by_ip(&paired.server_ip)
+                .await
+            {
                 Ok(Some(s_id)) => s_id,
                 Ok(None) => {
                     tracing::debug!("Could not find BM Server ID for IP {}", paired.server_ip);
@@ -69,7 +77,11 @@ impl TrackerWatchdog {
             let bm_players = match self.bm_client.scrape_server_players(&bm_server_id).await {
                 Ok(list) => list.players,
                 Err(e) => {
-                    tracing::error!("Failed to scrape BM server players for server {}: {}", bm_server_id, e);
+                    tracing::error!(
+                        "Failed to scrape BM server players for server {}: {}",
+                        bm_server_id,
+                        e
+                    );
                     continue;
                 }
             };
@@ -96,24 +108,39 @@ impl TrackerWatchdog {
                     let is_online_db = player.is_online == 1;
 
                     if is_online_db != is_currently_online {
-                        info!("Player {} ({}) status changed to: online={}", player.steam_id, bm_id, is_currently_online);
+                        info!(
+                            "Player {} ({}) status changed to: online={}",
+                            player.steam_id, bm_id, is_currently_online
+                        );
                         {
                             let mut conn = self.db_pool.get()?;
                             diesel::update(tracked_players.filter(id.eq(player.id)))
                                 .set((
                                     is_online.eq(if is_currently_online { 1 } else { 0 }),
-                                    last_known_server_id.eq(if is_currently_online { Some(bm_server_id.clone()) } else { None }),
+                                    last_known_server_id.eq(if is_currently_online {
+                                        Some(bm_server_id.clone())
+                                    } else {
+                                        None
+                                    }),
                                 ))
                                 .execute(&mut conn)?;
                         }
-                        
+
                         // Analytics: Record session
                         if is_currently_online {
-                            let _ = crate::tracking::analytics::recorder::start_session(&self.db_pool, player.id, paired.id, &player.steam_id);
+                            let _ = crate::tracking::analytics::recorder::start_session(
+                                &self.db_pool,
+                                player.id,
+                                paired.id,
+                                &player.steam_id,
+                            );
                         } else {
-                            let _ = crate::tracking::analytics::recorder::end_session(&self.db_pool, player.id);
+                            let _ = crate::tracking::analytics::recorder::end_session(
+                                &self.db_pool,
+                                player.id,
+                            );
                         }
-                        
+
                         needs_refresh = true;
 
                         // Check TTS config
@@ -128,11 +155,15 @@ impl TrackerWatchdog {
 
                         if let Some(config) = tts_config {
                             if let Some(vc_id_str) = config.tts_voice_channel_id {
-                                let should_alert = if is_currently_online { config.alert_on_join == 1 } else { config.alert_on_leave == 1 };
+                                let should_alert = if is_currently_online {
+                                    config.alert_on_join == 1
+                                } else {
+                                    config.alert_on_leave == 1
+                                };
                                 if should_alert && config.tts_enabled == 1 {
                                     use db::schema::fcm_credentials::dsl as fcm_dsl;
                                     use db::schema::paired_servers::dsl as ps_dsl;
-                                    
+
                                     let cred = {
                                         let mut conn = self.db_pool.get()?;
                                         fcm_dsl::fcm_credentials
@@ -142,37 +173,66 @@ impl TrackerWatchdog {
                                             .first::<db::models::FcmCredential>(&mut conn)
                                             .optional()?
                                     };
-                                    
-                                    if let Some(cred) = cred
-                                    {
-                                        if let (Ok(guild_id), Ok(vc_id)) = (cred.guild_id.parse::<u64>(), vc_id_str.parse::<u64>()) {
-                                            let action = if is_currently_online { "joined" } else { "left" };
-                                            let name_to_say = player.last_known_name.clone().unwrap_or_else(|| "Someone".to_string());
+
+                                    if let Some(cred) = cred {
+                                        if let (Ok(guild_id), Ok(vc_id)) =
+                                            (cred.guild_id.parse::<u64>(), vc_id_str.parse::<u64>())
+                                        {
+                                            let action = if is_currently_online {
+                                                "joined"
+                                            } else {
+                                                "left"
+                                            };
+                                            let name_to_say = player
+                                                .last_known_name
+                                                .clone()
+                                                .unwrap_or_else(|| "Someone".to_string());
                                             let tts_text = format!("{} {}", name_to_say, action);
-                                            
+
                                             let songbird_manager = self.songbird_manager.clone();
                                             let reqwest_client = self.reqwest_client.clone();
                                             let http = self.http.clone();
-                                            
+
                                             tokio::spawn(async move {
-                                                let channel_id = serenity::model::id::ChannelId::new(vc_id);
-                                                let actual_guild_id = match http.get_channel(channel_id).await {
-                                                    Ok(serenity::model::channel::Channel::Guild(gc)) => gc.guild_id,
-                                                    _ => serenity::model::id::GuildId::new(guild_id), // fallback
+                                                let channel_id =
+                                                    serenity::model::id::ChannelId::new(vc_id);
+                                                let actual_guild_id = match http
+                                                    .get_channel(channel_id)
+                                                    .await
+                                                {
+                                                    Ok(
+                                                        serenity::model::channel::Channel::Guild(
+                                                            gc,
+                                                        ),
+                                                    ) => gc.guild_id,
+                                                    _ => {
+                                                        serenity::model::id::GuildId::new(guild_id)
+                                                    } // fallback
                                                 };
-                                                
-                                                match crate::tracking::tts::generate_tts(&tts_text, "en_us_001", &reqwest_client).await {
+
+                                                match crate::tracking::tts::generate_tts(
+                                                    &tts_text,
+                                                    "en_us_001",
+                                                    &reqwest_client,
+                                                )
+                                                .await
+                                                {
                                                     Ok(bytes) => {
-                                                        if let Err(e) = crate::tracking::tts::play_and_leave(
-                                                            songbird_manager,
-                                                            actual_guild_id,
-                                                            channel_id,
-                                                            bytes
-                                                        ).await {
+                                                        if let Err(e) =
+                                                            crate::tracking::tts::play_and_leave(
+                                                                songbird_manager,
+                                                                actual_guild_id,
+                                                                channel_id,
+                                                                bytes,
+                                                            )
+                                                            .await
+                                                        {
                                                             error!("Failed to play TTS: {}", e);
                                                         }
                                                     }
-                                                    Err(e) => error!("Failed to generate TTS: {}", e),
+                                                    Err(e) => {
+                                                        error!("Failed to generate TTS: {}", e)
+                                                    }
                                                 }
                                             });
                                         }
@@ -190,13 +250,16 @@ impl TrackerWatchdog {
                         };
 
                         if name_changed {
-                            info!("Player {} ({}) changed name to {}", player.steam_id, bm_id, current_name);
+                            info!(
+                                "Player {} ({}) changed name to {}",
+                                player.steam_id, bm_id, current_name
+                            );
                             {
                                 let mut conn = self.db_pool.get()?;
                                 diesel::update(tracked_players.filter(id.eq(player.id)))
                                     .set(last_known_name.eq(current_name))
                                     .execute(&mut conn)?;
-                                
+
                                 diesel::insert_into(pnh::player_name_history)
                                     .values(db::models::NewPlayerNameHistory {
                                         tracked_player_id: player.id,
@@ -208,12 +271,18 @@ impl TrackerWatchdog {
                         }
                     }
                 } else {
-                    debug!("Player {} has no BM ID linked. Attempting to cross-reference...", player.steam_id);
+                    debug!(
+                        "Player {} has no BM ID linked. Attempting to cross-reference...",
+                        player.steam_id
+                    );
                     match self.steam_client.get_profile(&player.steam_id).await {
                         Ok(steam_profile) => {
                             let steam_name = steam_profile.persona_name;
-                            debug!("Steam Profile for {}: name = '{}'", player.steam_id, steam_name);
-                            
+                            debug!(
+                                "Steam Profile for {}: name = '{}'",
+                                player.steam_id, steam_name
+                            );
+
                             if player.last_known_name.as_deref() != Some(&steam_name) {
                                 {
                                     let mut conn = self.db_pool.get()?;
@@ -223,9 +292,12 @@ impl TrackerWatchdog {
                                 }
                                 needs_refresh = true;
                             }
-                            
+
                             if let Some(matched_bm_id) = online_names_to_bm_ids.get(&steam_name) {
-                                info!("✅ Cross-referenced Steam ID {} to BM ID {}", player.steam_id, matched_bm_id);
+                                info!(
+                                    "✅ Cross-referenced Steam ID {} to BM ID {}",
+                                    player.steam_id, matched_bm_id
+                                );
                                 {
                                     let mut conn = self.db_pool.get()?;
                                     diesel::update(tracked_players.filter(id.eq(player.id)))
@@ -239,11 +311,18 @@ impl TrackerWatchdog {
                                 }
                                 needs_refresh = true;
                             } else {
-                                debug!("Steam name '{}' not found in BM server player list.", steam_name);
+                                debug!(
+                                    "Steam name '{}' not found in BM server player list.",
+                                    steam_name
+                                );
                             }
                         }
                         Err(e) => {
-                            tracing::error!("Failed to get Steam profile for {}: {}", player.steam_id, e);
+                            tracing::error!(
+                                "Failed to get Steam profile for {}: {}",
+                                player.steam_id,
+                                e
+                            );
                         }
                     }
                     tokio::time::sleep(Duration::from_secs(1)).await;
@@ -254,13 +333,15 @@ impl TrackerWatchdog {
                 }
             }
         }
-        
+
         for s_id in servers_to_refresh {
-            if let Err(e) = crate::tracking::dashboard::refresh_dashboard(&self.http, &self.db_pool, s_id).await {
+            if let Err(e) =
+                crate::tracking::dashboard::refresh_dashboard(&self.http, &self.db_pool, s_id).await
+            {
                 error!("Failed to refresh dashboard for server {}: {}", s_id, e);
             }
         }
-        
+
         Ok(())
     }
 }

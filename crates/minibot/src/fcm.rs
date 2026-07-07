@@ -72,14 +72,15 @@ fn spawn_fcm_listener(
             info!("FCM listener connected for credential {}", cred.id);
 
             while let Some(notif) = notification_stream.recv().await {
-                if let Err(e) =
-                    handle_fcm_notification(&notif, &cred, &db_pool, &conn_mgr).await
-                {
+                if let Err(e) = handle_fcm_notification(&notif, &cred, &db_pool, &conn_mgr).await {
                     error!("Error handling FCM notification: {}", e);
                 }
             }
 
-            warn!("FCM stream ended for credential {}. Reconnecting...", cred.id);
+            warn!(
+                "FCM stream ended for credential {}. Reconnecting...",
+                cred.id
+            );
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         }
     })
@@ -134,8 +135,11 @@ async fn handle_fcm_notification(
             .optional()?;
 
         if let Some(srv) = existing {
-            info!("Server {} already paired (id={}), ensuring it is connected", name, srv.id);
-            
+            info!(
+                "Server {} already paired (id={}), ensuring it is connected",
+                name, srv.id
+            );
+
             // Re-enable auto_reconnect in case it was disabled
             diesel::update(ps_dsl::paired_servers.find(srv.id))
                 .set(ps_dsl::auto_reconnect.eq(1))

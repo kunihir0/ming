@@ -39,9 +39,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mins = p.duration / 60.0;
                 let hours = mins / 60.0;
                 if hours >= 1.0 {
-                    println!("[{:02}] {} - Score: {} - Time: {:.1}h", p.index, p.name, p.score, hours);
+                    println!(
+                        "[{:02}] {} - Score: {} - Time: {:.1}h",
+                        p.index, p.name, p.score, hours
+                    );
                 } else {
-                    println!("[{:02}] {} - Score: {} - Time: {:.0}m", p.index, p.name, p.score, mins);
+                    println!(
+                        "[{:02}] {} - Score: {} - Time: {:.0}m",
+                        p.index, p.name, p.score, mins
+                    );
                 }
             }
         }

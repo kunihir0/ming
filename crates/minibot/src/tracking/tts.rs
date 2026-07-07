@@ -36,30 +36,30 @@ pub async fn play_and_leave(
     audio_bytes: Vec<u8>,
 ) -> Result<()> {
     info!("Joining voice channel {} in guild {}", channel_id, guild_id);
-    
+
     // Join the voice channel
     let handler_lock = songbird_manager.join(guild_id, channel_id).await?;
     let mut handler = handler_lock.lock().await;
-    
+
     // Create an input from the memory bytes
     let input: Input = audio_bytes.into();
-    
+
     // Play the input
     let track_handle = handler.play_input(input);
     let _ = track_handle.set_volume(0.5);
-    
+
     // Drop the lock so playback can happen
     drop(handler);
-    
+
     // Wait for the track to finish playing
     while track_handle.get_info().await.is_ok() {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
-    
+
     // Leave the channel after a short delay
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     songbird_manager.leave(guild_id).await?;
     info!("Left voice channel {} in guild {}", channel_id, guild_id);
-    
+
     Ok(())
 }

@@ -1,9 +1,4 @@
-use axum::{
-    extract::Query,
-    response::Html,
-    routing::get,
-    Router,
-};
+use axum::{Router, extract::Query, response::Html, routing::get};
 use push_receiver::android_fcm::AndroidFcm;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -199,7 +194,7 @@ async fn main() -> anyhow::Result<()> {
     let expo_push_token = get_expo_push_token(&client, fcm_credentials.fcm.token.clone()).await?;
 
     println!("Google Chrome is launching so you can link your Steam account with Rust+...");
-    
+
     let (tx, rx) = oneshot::channel::<String>();
     let tx = std::sync::Arc::new(tokio::sync::Mutex::new(Some(tx)));
 
@@ -220,11 +215,11 @@ async fn main() -> anyhow::Result<()> {
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    
+
     launch_chrome()?;
 
     let server = axum::serve(listener, app);
-    
+
     // Wait for the token
     let rustplus_auth_token = tokio::select! {
         token = rx => token?,
@@ -232,7 +227,12 @@ async fn main() -> anyhow::Result<()> {
     };
 
     println!("Registering with Rust Companion API...");
-    register_with_rustplus(&client, rustplus_auth_token.clone(), expo_push_token.clone()).await?;
+    register_with_rustplus(
+        &client,
+        rustplus_auth_token.clone(),
+        expo_push_token.clone(),
+    )
+    .await?;
 
     let output = OutputJson {
         fcm_credentials,

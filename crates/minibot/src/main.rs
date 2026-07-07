@@ -4,16 +4,18 @@ mod fcm;
 mod framework;
 mod items;
 mod listener;
-pub mod vending;
 pub mod team;
 pub mod tracking;
+pub mod vending;
 
 use crate::connection_manager::ConnectionManager;
 use crate::framework::{CommandRegistry, MinibotData, ReplyTarget, UnifiedContext};
-use crate::tracking::commands::{track, find, TrackCommand};
-use crate::tracking::hours_cmd::hours;
 use crate::team::team;
-use crate::vending::{VendingListCommand, VendingSearchCommand, VendingSubsCommand, VendingDumpCommand};
+use crate::tracking::commands::{find, track, TrackCommand};
+use crate::tracking::hours_cmd::hours;
+use crate::vending::{
+    VendingDumpCommand, VendingListCommand, VendingSearchCommand, VendingSubsCommand,
+};
 use anyhow::Context as _;
 use diesel::prelude::*;
 use poise::serenity_prelude as serenity;
@@ -39,7 +41,12 @@ pub enum SearchType {
 // Vending commands: /v search | /v subs | /v list | /v dump
 // ---------------------------------------------------------------------------
 
-#[poise::command(slash_command, subcommands("search", "subs", "list", "dump"), subcommand_required, category = "Vending Machines")]
+#[poise::command(
+    slash_command,
+    subcommands("search", "subs", "list", "dump"),
+    subcommand_required,
+    category = "Vending Machines"
+)]
 async fn v(_ctx: PoiseContext<'_>) -> Result<(), Error> {
     Ok(())
 }
@@ -50,14 +57,17 @@ async fn help(ctx: PoiseContext<'_>) -> Result<(), Error> {
     let mut help_text = String::from("```asciidoc\n= Minibot Command Reference =\n");
 
     let commands = &ctx.framework().options().commands;
-    let mut categories: std::collections::BTreeMap<&str, Vec<_>> = std::collections::BTreeMap::new();
-    
+    let mut categories: std::collections::BTreeMap<&str, Vec<_>> =
+        std::collections::BTreeMap::new();
+
     for cmd in commands {
-        if cmd.hide_in_help { continue; }
+        if cmd.hide_in_help {
+            continue;
+        }
         let cat = cmd.category.as_deref().unwrap_or("Uncategorized");
         categories.entry(cat).or_default().push(cmd);
     }
-    
+
     for (cat_name, cmds) in categories {
         help_text.push_str(&format!("\n== {} ==\n", cat_name));
         for cmd in cmds {
@@ -66,7 +76,9 @@ async fn help(ctx: PoiseContext<'_>) -> Result<(), Error> {
                 help_text.push_str(&format!("/{:<20} :: {}\n", cmd.name, desc));
             } else {
                 for sub in &cmd.subcommands {
-                    if sub.hide_in_help { continue; }
+                    if sub.hide_in_help {
+                        continue;
+                    }
                     let desc = sub.description.as_deref().unwrap_or("No description");
                     let full_name = format!("{} {}", cmd.name, sub.name);
                     help_text.push_str(&format!("/{:<20} :: {}\n", full_name, desc));
@@ -74,10 +86,15 @@ async fn help(ctx: PoiseContext<'_>) -> Result<(), Error> {
             }
         }
     }
-    
+
     help_text.push_str("```");
-    
-    ctx.send(poise::CreateReply::default().content(help_text).ephemeral(true)).await?;
+
+    ctx.send(
+        poise::CreateReply::default()
+            .content(help_text)
+            .ephemeral(true),
+    )
+    .await?;
     Ok(())
 }
 
@@ -88,8 +105,7 @@ async fn search(
     #[description = "Server ID"]
     #[autocomplete = "crate::autocomplete::autocomplete_server"]
     server_id: i32,
-    #[description = "Search type (default: Buy)"]
-    search_type: Option<SearchType>,
+    #[description = "Search type (default: Buy)"] search_type: Option<SearchType>,
     #[description = "Item 1"]
     #[autocomplete = "crate::autocomplete::autocomplete_item"]
     query1: String,
@@ -107,23 +123,37 @@ async fn search(
     query5: Option<String>,
 ) -> Result<(), Error> {
     ctx.defer().await?;
-    let uctx = discord_context(ctx.data(), server_id, ctx.author().id.get(), ctx.channel_id());
+    let uctx = discord_context(
+        ctx.data(),
+        server_id,
+        ctx.author().id.get(),
+        ctx.channel_id(),
+    );
     let cmd = VendingSearchCommand;
-    
+
     let type_str = match search_type {
         Some(SearchType::Sell) => "sell",
         _ => "buy",
     };
 
     let mut all_queries = vec![query1];
-    if let Some(q) = query2 { all_queries.push(q); }
-    if let Some(q) = query3 { all_queries.push(q); }
-    if let Some(q) = query4 { all_queries.push(q); }
-    if let Some(q) = query5 { all_queries.push(q); }
+    if let Some(q) = query2 {
+        all_queries.push(q);
+    }
+    if let Some(q) = query3 {
+        all_queries.push(q);
+    }
+    if let Some(q) = query4 {
+        all_queries.push(q);
+    }
+    if let Some(q) = query5 {
+        all_queries.push(q);
+    }
     let combined_query = all_queries.join(", ");
 
     let args = [type_str, combined_query.as_str()];
-    ctx.say(format!("Searching for {}...", combined_query)).await?;
+    ctx.say(format!("Searching for {}...", combined_query))
+        .await?;
     match crate::framework::UnifiedCommand::execute(&cmd, &uctx, &args).await {
         Ok(response) => {
             let pages = response.pages;
@@ -158,7 +188,12 @@ async fn subs(
     #[autocomplete = "crate::autocomplete::autocomplete_item"]
     query: String,
 ) -> Result<(), Error> {
-    let uctx = discord_context(ctx.data(), server_id, ctx.author().id.get(), ctx.channel_id());
+    let uctx = discord_context(
+        ctx.data(),
+        server_id,
+        ctx.author().id.get(),
+        ctx.channel_id(),
+    );
     let cmd = VendingSubsCommand;
     let args: Vec<&str> = query.split_whitespace().collect();
 
@@ -188,7 +223,12 @@ async fn list(
     server_id: i32,
 ) -> Result<(), Error> {
     ctx.defer().await?;
-    let uctx = discord_context(ctx.data(), server_id, ctx.author().id.get(), ctx.channel_id());
+    let uctx = discord_context(
+        ctx.data(),
+        server_id,
+        ctx.author().id.get(),
+        ctx.channel_id(),
+    );
     let cmd = VendingListCommand;
     let args: Vec<&str> = vec![];
 
@@ -218,7 +258,12 @@ async fn dump(
     server_id: i32,
 ) -> Result<(), Error> {
     ctx.defer().await?;
-    let uctx = discord_context(ctx.data(), server_id, ctx.author().id.get(), ctx.channel_id());
+    let uctx = discord_context(
+        ctx.data(),
+        server_id,
+        ctx.author().id.get(),
+        ctx.channel_id(),
+    );
     let cmd = VendingDumpCommand;
     let args: Vec<&str> = vec![];
 
@@ -246,7 +291,12 @@ async fn dump(
 /// Manage Rust+ server connections
 #[poise::command(
     slash_command,
-    subcommands("server_connect", "server_disconnect", "server_list", "server_clear_all"),
+    subcommands(
+        "server_connect",
+        "server_disconnect",
+        "server_list",
+        "server_clear_all"
+    ),
     subcommand_required,
     category = "Server Management",
     required_permissions = "MANAGE_GUILD"
@@ -309,15 +359,20 @@ async fn server_disconnect(
 }
 
 /// Clear all server connections and delete from DB
-#[poise::command(slash_command, required_permissions = "MANAGE_GUILD", rename = "clear_all")]
-async fn server_clear_all(
-    ctx: PoiseContext<'_>,
-) -> Result<(), Error> {
+#[poise::command(
+    slash_command,
+    required_permissions = "MANAGE_GUILD",
+    rename = "clear_all"
+)]
+async fn server_clear_all(ctx: PoiseContext<'_>) -> Result<(), Error> {
     ctx.defer().await?;
     let mut conn_mgr = ctx.data().connection_manager.lock().await;
     if let Some(mgr) = conn_mgr.as_mut() {
         mgr.clear_all().await?;
-        ctx.say("All paired servers have been disconnected and deleted. You can now re-pair in game.").await?;
+        ctx.say(
+            "All paired servers have been disconnected and deleted. You can now re-pair in game.",
+        )
+        .await?;
     } else {
         ctx.say("Connection manager not ready yet.").await?;
     }
@@ -358,7 +413,11 @@ async fn server_list(ctx: PoiseContext<'_>) -> Result<(), Error> {
 // ---------------------------------------------------------------------------
 
 /// Set the default Discord channel for in-game replies
-#[poise::command(slash_command, required_permissions = "MANAGE_GUILD", category = "Config")]
+#[poise::command(
+    slash_command,
+    required_permissions = "MANAGE_GUILD",
+    category = "Config"
+)]
 async fn set_reply_channel(
     ctx: PoiseContext<'_>,
     #[description = "Server ID"]
@@ -476,9 +535,8 @@ async fn creds_list(ctx: PoiseContext<'_>) -> Result<(), Error> {
     let mut conn = ctx.data().db_pool.get()?;
 
     use db::schema::fcm_credentials::dsl::*;
-    let creds: Vec<db::models::FcmCredential> = fcm_credentials
-        .filter(guild_id.eq(&gid))
-        .load(&mut conn)?;
+    let creds: Vec<db::models::FcmCredential> =
+        fcm_credentials.filter(guild_id.eq(&gid)).load(&mut conn)?;
 
     if creds.is_empty() {
         ctx.say("No credentials stored. Use `/credentials add` to add some.")
@@ -494,7 +552,7 @@ async fn creds_list(ctx: PoiseContext<'_>) -> Result<(), Error> {
             c.id, c.steam_id, c.expire_date
         );
     }
-    
+
     ctx.say(response).await?;
     Ok(())
 }
@@ -504,20 +562,20 @@ async fn creds_list(ctx: PoiseContext<'_>) -> Result<(), Error> {
 async fn creds_clear_all(ctx: PoiseContext<'_>) -> Result<(), Error> {
     ctx.defer().await?;
     let gid = ctx.guild_id().ok_or("Must be run in a guild")?.to_string();
-    
+
     // Disconnect and clear all paired servers first
     let mut conn_mgr = ctx.data().connection_manager.lock().await;
     if let Some(mgr) = conn_mgr.as_mut() {
         let _ = mgr.clear_all().await;
     }
-    
+
     let mut conn = ctx.data().db_pool.get()?;
     use db::schema::fcm_credentials::dsl::*;
     use diesel::prelude::*;
-    
+
     // Delete all credentials for this guild
     diesel::delete(fcm_credentials.filter(guild_id.eq(&gid))).execute(&mut conn)?;
-    
+
     ctx.say("✅ All FCM credentials and paired servers have been wiped. You can now start completely fresh!").await?;
     Ok(())
 }
@@ -565,26 +623,55 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let token = env::var("DISCORD_TOKEN").context("Missing DISCORD_TOKEN")?;
-    let intents =
-        serenity::GatewayIntents::non_privileged() | serenity::GatewayIntents::MESSAGE_CONTENT | serenity::GatewayIntents::GUILD_VOICE_STATES;
+    let intents = serenity::GatewayIntents::non_privileged()
+        | serenity::GatewayIntents::MESSAGE_CONTENT
+        | serenity::GatewayIntents::GUILD_VOICE_STATES;
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
-            commands: vec![v(), server(), credentials(), set_reply_channel(), track(), find(), help(), team(), hours()],
+            commands: vec![
+                v(),
+                server(),
+                credentials(),
+                set_reply_channel(),
+                track(),
+                find(),
+                help(),
+                team(),
+                hours(),
+            ],
             event_handler: |ctx, event, _framework, data| {
                 Box::pin(async move {
-                    if let poise::serenity_prelude::FullEvent::InteractionCreate { interaction } = event {
-                        if let poise::serenity_prelude::Interaction::Component(component) = interaction {
+                    if let poise::serenity_prelude::FullEvent::InteractionCreate { interaction } =
+                        event
+                    {
+                        if let poise::serenity_prelude::Interaction::Component(component) =
+                            interaction
+                        {
                             let custom_id = component.data.custom_id.clone();
                             if custom_id.starts_with("track_") {
-                                if let Err(e) = crate::tracking::dashboard::handle_component(ctx, component, &data.db_pool).await {
+                                if let Err(e) = crate::tracking::dashboard::handle_component(
+                                    ctx,
+                                    component,
+                                    &data.db_pool,
+                                )
+                                .await
+                                {
                                     tracing::error!("Dashboard component error: {}", e);
                                 }
                             }
-                        } else if let poise::serenity_prelude::Interaction::Modal(modal) = interaction {
+                        } else if let poise::serenity_prelude::Interaction::Modal(modal) =
+                            interaction
+                        {
                             let custom_id = modal.data.custom_id.clone();
                             if custom_id.starts_with("track_") {
-                                if let Err(e) = crate::tracking::dashboard::handle_modal(ctx, modal, &data.db_pool).await {
+                                if let Err(e) = crate::tracking::dashboard::handle_modal(
+                                    ctx,
+                                    modal,
+                                    &data.db_pool,
+                                )
+                                .await
+                                {
                                     tracing::error!("Dashboard modal error: {}", e);
                                 }
                             }
@@ -637,8 +724,14 @@ async fn main() -> anyhow::Result<()> {
                 conn_mgr.clone().start_watchdog();
 
                 // Start tracking watchdog
-                let songbird_manager = songbird::get(ctx).await.expect("Songbird Voice client placed in at initialization.");
-                let tracking_watchdog = Arc::new(crate::tracking::watchdog::TrackerWatchdog::new(db_pool.clone(), ctx.http.clone(), songbird_manager));
+                let songbird_manager = songbird::get(ctx)
+                    .await
+                    .expect("Songbird Voice client placed in at initialization.");
+                let tracking_watchdog = Arc::new(crate::tracking::watchdog::TrackerWatchdog::new(
+                    db_pool.clone(),
+                    ctx.http.clone(),
+                    songbird_manager,
+                ));
                 tokio::spawn(tracking_watchdog.start());
 
                 // Start FCM listeners for auto-pairing

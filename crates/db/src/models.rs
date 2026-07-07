@@ -1,11 +1,11 @@
 use crate::schema::{
-    fcm_credentials, guild_configs, paired_servers, pairing_requests, player_stats,
-    server_channels, server_settings, sessions, user_rustplus_credentials, users,
-    vending_subscriptions, track_groups, tracked_players, player_name_history,
-    track_notifications_config, player_links, player_sessions,
+    fcm_credentials, guild_configs, paired_servers, pairing_requests, player_links,
+    player_name_history, player_sessions, player_stats, server_channels, server_settings, sessions,
+    track_groups, track_notifications_config, tracked_players, user_rustplus_credentials, users,
+    vending_subscriptions,
 };
-use diesel::prelude::*;
 use chrono::NaiveDateTime;
+use diesel::prelude::*;
 
 #[derive(Queryable, Selectable, Insertable, Identifiable, AsChangeset, Debug, Clone)]
 #[diesel(table_name = player_links)]
@@ -189,7 +189,9 @@ pub struct NewPlayerStat {
     pub y: f32,
 }
 
-#[derive(Queryable, Selectable, Insertable, Identifiable, AsChangeset, Debug, Clone, serde::Serialize)]
+#[derive(
+    Queryable, Selectable, Insertable, Identifiable, AsChangeset, Debug, Clone, serde::Serialize,
+)]
 #[diesel(table_name = users)]
 #[diesel(primary_key(discord_id))]
 pub struct User {
@@ -224,7 +226,9 @@ pub struct NewSession {
     pub expires_at: chrono::NaiveDateTime,
 }
 
-#[derive(Queryable, Selectable, Insertable, Identifiable, AsChangeset, Debug, Clone, serde::Serialize)]
+#[derive(
+    Queryable, Selectable, Insertable, Identifiable, AsChangeset, Debug, Clone, serde::Serialize,
+)]
 #[diesel(table_name = user_rustplus_credentials)]
 #[diesel(primary_key(discord_id))]
 pub struct UserRustplusCredential {
@@ -245,7 +249,9 @@ pub struct NewUserRustplusCredential {
     pub rustplus_auth_token: String,
 }
 
-#[derive(Queryable, Selectable, Insertable, Identifiable, AsChangeset, Associations, Debug, Clone)]
+#[derive(
+    Queryable, Selectable, Insertable, Identifiable, AsChangeset, Associations, Debug, Clone,
+)]
 #[diesel(belongs_to(PairedServer, foreign_key = server_id))]
 #[diesel(table_name = vending_subscriptions)]
 pub struct VendingSubscription {
@@ -269,7 +275,9 @@ pub struct NewVendingSubscription {
     pub max_price: Option<i32>,
 }
 
-#[derive(Queryable, Selectable, Insertable, Identifiable, AsChangeset, Associations, Debug, Clone)]
+#[derive(
+    Queryable, Selectable, Insertable, Identifiable, AsChangeset, Associations, Debug, Clone,
+)]
 #[diesel(belongs_to(PairedServer, foreign_key = server_id))]
 #[diesel(table_name = track_groups)]
 pub struct TrackGroup {
@@ -288,7 +296,9 @@ pub struct NewTrackGroup {
     pub color: Option<String>,
 }
 
-#[derive(Queryable, Selectable, Insertable, Identifiable, AsChangeset, Associations, Debug, Clone)]
+#[derive(
+    Queryable, Selectable, Insertable, Identifiable, AsChangeset, Associations, Debug, Clone,
+)]
 #[diesel(belongs_to(TrackGroup, foreign_key = group_id))]
 #[diesel(belongs_to(PairedServer, foreign_key = server_id))]
 #[diesel(table_name = tracked_players)]
@@ -317,7 +327,9 @@ pub struct NewTrackedPlayer {
     pub is_online: i32,
 }
 
-#[derive(Queryable, Selectable, Insertable, Identifiable, AsChangeset, Associations, Debug, Clone)]
+#[derive(
+    Queryable, Selectable, Insertable, Identifiable, AsChangeset, Associations, Debug, Clone,
+)]
 #[diesel(belongs_to(TrackedPlayer, foreign_key = tracked_player_id))]
 #[diesel(table_name = player_name_history)]
 pub struct PlayerNameHistory {
@@ -334,7 +346,9 @@ pub struct NewPlayerNameHistory {
     pub name: String,
 }
 
-#[derive(Queryable, Selectable, Insertable, Identifiable, AsChangeset, Associations, Debug, Clone)]
+#[derive(
+    Queryable, Selectable, Insertable, Identifiable, AsChangeset, Associations, Debug, Clone,
+)]
 #[diesel(belongs_to(PairedServer, foreign_key = server_id))]
 #[diesel(table_name = track_notifications_config)]
 pub struct TrackNotificationsConfig {
@@ -365,7 +379,9 @@ pub struct NewTrackNotificationsConfig {
 }
 
 /// A recorded player session tracking join/leave events.
-#[derive(Queryable, Selectable, Insertable, Identifiable, AsChangeset, Associations, Debug, Clone)]
+#[derive(
+    Queryable, Selectable, Insertable, Identifiable, AsChangeset, Associations, Debug, Clone,
+)]
 #[diesel(belongs_to(TrackedPlayer, foreign_key = tracked_player_id))]
 #[diesel(belongs_to(PairedServer, foreign_key = server_id))]
 #[diesel(table_name = player_sessions)]

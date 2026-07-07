@@ -1,6 +1,6 @@
+pub mod deals;
 pub mod pop;
 pub mod vending;
-pub mod deals;
 
 use crate::Data;
 use db::models::ServerSettings;

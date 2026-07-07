@@ -20,13 +20,13 @@ impl GCommand for Deals {
         Box::pin(async move {
             let server_id = ctx.server_id;
             let data = ctx.data.clone();
-            
+
             let query = if args.is_empty() {
                 None
             } else {
                 Some(args.join(" "))
             };
-            
+
             // We spawn the task so we don't block the team chat loop
             tokio::spawn(async move {
                 let map_size = match data.map_service.get_map_size(server_id, &data).await {
@@ -37,7 +37,11 @@ impl GCommand for Deals {
                     }
                 };
 
-                let vending_machines = match data.map_service.get_vending_machines(server_id, &data).await {
+                let vending_machines = match data
+                    .map_service
+                    .get_vending_machines(server_id, &data)
+                    .await
+                {
                     Ok(vms) => vms,
                     Err(e) => {
                         tracing::error!("Failed to get vending machines for AI deals: {e}");
@@ -45,10 +49,13 @@ impl GCommand for Deals {
                     }
                 };
 
-                let best_deals = match find_best_deals(server_id, map_size, &vending_machines, query.clone()).await {
-                    Ok(deals) => deals,
-                    Err(e) => format!("AI Analysis Error: {e}"),
-                };
+                let best_deals =
+                    match find_best_deals(server_id, map_size, &vending_machines, query.clone())
+                        .await
+                    {
+                        Ok(deals) => deals,
+                        Err(e) => format!("AI Analysis Error: {e}"),
+                    };
 
                 use db::models::ServerChannel;
                 use db::schema::server_channels::dsl as sc_dsl;
@@ -75,9 +82,9 @@ impl GCommand for Deals {
                 if let Some(channel_id_str) = chat_channel_id_str {
                     if let Ok(channel_id_u64) = channel_id_str.parse::<u64>() {
                         let channel_id = serenity::ChannelId::new(channel_id_u64);
-                        
+
                         let message = format!("**AI Vending Machine Analysis**\n\n{best_deals}");
-                        
+
                         if message.len() > 2000 {
                             let mut current = String::new();
                             for line in message.lines() {
@@ -98,11 +105,15 @@ impl GCommand for Deals {
                         }
                     }
                 } else {
-                    tracing::warn!("No chat channel configured for server {server_id} to post AI deals");
+                    tracing::warn!(
+                        "No chat channel configured for server {server_id} to post AI deals"
+                    );
                 }
             });
 
-            Ok(Some("Analyzing vending machines... Results will be posted to Discord.".to_string()))
+            Ok(Some(
+                "Analyzing vending machines... Results will be posted to Discord.".to_string(),
+            ))
         })
     }
 }

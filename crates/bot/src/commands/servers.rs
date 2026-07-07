@@ -1,7 +1,7 @@
+use crate::{Context, Error};
 use db::models::PairedServer;
 use db::schema::fcm_credentials::dsl as fcm_dsl;
 use db::schema::paired_servers::dsl as ps_dsl;
-use crate::{Context, Error};
 use diesel::prelude::*;
 use std::fmt::Write as _;
 

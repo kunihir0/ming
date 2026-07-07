@@ -1,5 +1,5 @@
+use anyhow::{Context, Result};
 use serde::Deserialize;
-use anyhow::{Result, Context};
 use std::env;
 
 #[derive(Debug, Deserialize)]
@@ -46,8 +46,11 @@ impl AtlasClient {
     }
 
     pub async fn get_player(&self, steam_id: &str) -> Result<AtlasPlayerResponse> {
-        let url = format!("https://services.atlasrust.com/api/public/player/{}", steam_id);
-        
+        let url = format!(
+            "https://services.atlasrust.com/api/public/player/{}",
+            steam_id
+        );
+
         let res = self.http.get(&url)
             .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36")
             .header("Origin", "https://atlasrust.com")
@@ -58,7 +61,7 @@ impl AtlasClient {
 
         let status = res.status();
         let text = res.text().await?;
-        
+
         if !status.is_success() {
             anyhow::bail!("Atlas API returned status {}: {}", status, text);
         }

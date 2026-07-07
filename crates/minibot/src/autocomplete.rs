@@ -16,22 +16,19 @@ pub async fn autocomplete_server<'a>(
         }
     };
     use db::schema::paired_servers::dsl::*;
-    
+
     let servers: Vec<PairedServer> = paired_servers.load(&mut conn).unwrap_or_default();
-    
+
     servers
         .into_iter()
         .filter(move |s| {
-            partial.is_empty() 
-            || s.name.to_lowercase().contains(&partial.to_lowercase()) 
-            || s.id.to_string().contains(partial)
+            partial.is_empty()
+                || s.name.to_lowercase().contains(&partial.to_lowercase())
+                || s.id.to_string().contains(partial)
         })
         .take(25)
         .map(|s| {
-            serenity::AutocompleteChoice::new(
-                format!("{} (ID: {})", s.name, s.id),
-                s.id as i64,
-            )
+            serenity::AutocompleteChoice::new(format!("{} (ID: {})", s.name, s.id), s.id as i64)
         })
         .collect::<Vec<_>>()
         .into_iter()
@@ -46,13 +43,11 @@ pub async fn autocomplete_item<'a>(
     }
 
     let results = crate::items::search_items_smart(partial);
-    
+
     results
         .into_iter()
         .take(25)
-        .map(|(_id, name, _shortname)| {
-            serenity::AutocompleteChoice::new(name.clone(), name)
-        })
+        .map(|(_id, name, _shortname)| serenity::AutocompleteChoice::new(name.clone(), name))
         .collect::<Vec<_>>()
         .into_iter()
 }

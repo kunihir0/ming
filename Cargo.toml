@@ -4,6 +4,7 @@ members = ["crates/a2s","crates/api",
     "crates/minibot",
     "crates/push-receiver",
     "crates/rustplus",
+    "crates/team_dec",
 ]
 resolver = "2"
 

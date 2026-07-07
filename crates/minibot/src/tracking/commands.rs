@@ -27,28 +27,29 @@ impl UnifiedCommand for TrackCommand {
         Box::pin(async move {
             if args.is_empty() {
                 return Ok(CommandResponse::text(vec![
-                    "Usage: @track <steamid>".to_string(),
+                    "Usage: @track <steamid>".to_string()
                 ]));
             }
 
             let steam_id = args[0].to_string();
-            
+
             // Just insert them into the DB; the watchdog will resolve their BM ID and Name.
             let mut conn = ctx.data.db_pool.get()?;
-            
+
             // Check if already tracked on this server
             let existing: i64 = players_dsl::tracked_players
                 .filter(players_dsl::server_id.eq(ctx.server_id))
                 .filter(players_dsl::steam_id.eq(&steam_id))
                 .count()
                 .get_result(&mut conn)?;
-                
+
             if existing > 0 {
-                return Ok(CommandResponse::text(vec![
-                    format!("Player {} is already being tracked.", steam_id),
-                ]));
+                return Ok(CommandResponse::text(vec![format!(
+                    "Player {} is already being tracked.",
+                    steam_id
+                )]));
             }
-            
+
             diesel::insert_into(players_dsl::tracked_players)
                 .values(NewTrackedPlayer {
                     group_id: None,
@@ -61,13 +62,20 @@ impl UnifiedCommand for TrackCommand {
                 })
                 .execute(&mut conn)?;
 
-            if let Err(e) = crate::tracking::dashboard::refresh_dashboard(&ctx.data.discord_http, &ctx.data.db_pool, ctx.server_id).await {
+            if let Err(e) = crate::tracking::dashboard::refresh_dashboard(
+                &ctx.data.discord_http,
+                &ctx.data.db_pool,
+                ctx.server_id,
+            )
+            .await
+            {
                 tracing::error!("Failed to refresh dashboard: {}", e);
             }
 
-            Ok(CommandResponse::text(vec![
-                format!("Now tracking Steam ID {}. The watchdog will sync their info shortly.", steam_id),
-            ]))
+            Ok(CommandResponse::text(vec![format!(
+                "Now tracking Steam ID {}. The watchdog will sync their info shortly.",
+                steam_id
+            )]))
         })
     }
 }
@@ -76,7 +84,12 @@ impl UnifiedCommand for TrackCommand {
 // Discord Slash Commands
 // ---------------------------------------------------------------------------
 
-#[poise::command(slash_command, subcommands("setup_dashboard", "setup_tts", "tts_toggle", "add", "remove", "group"), subcommand_required, category = "Player Tracking")]
+#[poise::command(
+    slash_command,
+    subcommands("setup_dashboard", "setup_tts", "tts_toggle", "add", "remove", "group"),
+    subcommand_required,
+    category = "Player Tracking"
+)]
 pub async fn track(_ctx: PoiseContext<'_>) -> Result<(), Error> {
     Ok(())
 }
@@ -93,20 +106,22 @@ async fn setup_tts(
     channel: serenity::model::channel::GuildChannel,
 ) -> Result<(), Error> {
     ctx.defer().await?;
-    
+
     let mut conn = ctx.data().db_pool.get()?;
-    use db::schema::track_notifications_config::dsl as config_dsl;
     use db::models::NewTrackNotificationsConfig;
-    
+    use db::schema::track_notifications_config::dsl as config_dsl;
+
     let existing: i64 = config_dsl::track_notifications_config
         .filter(config_dsl::server_id.eq(server_id))
         .count()
         .get_result(&mut conn)?;
-        
+
     if existing > 0 {
-        diesel::update(config_dsl::track_notifications_config.filter(config_dsl::server_id.eq(server_id)))
-            .set(config_dsl::tts_voice_channel_id.eq(Some(channel.id.to_string())))
-            .execute(&mut conn)?;
+        diesel::update(
+            config_dsl::track_notifications_config.filter(config_dsl::server_id.eq(server_id)),
+        )
+        .set(config_dsl::tts_voice_channel_id.eq(Some(channel.id.to_string())))
+        .execute(&mut conn)?;
     } else {
         diesel::insert_into(config_dsl::track_notifications_config)
             .values(NewTrackNotificationsConfig {
@@ -122,8 +137,9 @@ async fn setup_tts(
             })
             .execute(&mut conn)?;
     }
-    
-    ctx.say(format!("✅ TTS voice channel set to <#{}>", channel.id)).await?;
+
+    ctx.say(format!("✅ TTS voice channel set to <#{}>", channel.id))
+        .await?;
     Ok(())
 }
 
@@ -136,27 +152,37 @@ async fn tts_toggle(
     server_id: i32,
 ) -> Result<(), Error> {
     ctx.defer().await?;
-    
+
     let mut conn = ctx.data().db_pool.get()?;
     use db::schema::track_notifications_config::dsl as config_dsl;
-    
+
     let config_opt = config_dsl::track_notifications_config
         .filter(config_dsl::server_id.eq(server_id))
         .first::<db::models::TrackNotificationsConfig>(&mut conn)
         .optional()?;
-        
+
     if let Some(config) = config_opt {
         let new_state = if config.tts_enabled == 1 { 0 } else { 1 };
-        diesel::update(config_dsl::track_notifications_config.filter(config_dsl::server_id.eq(server_id)))
-            .set(config_dsl::tts_enabled.eq(new_state))
-            .execute(&mut conn)?;
-            
-        let state_str = if new_state == 1 { "enabled" } else { "disabled" };
-        ctx.say(format!("✅ TTS notifications are now **{}** for this server.", state_str)).await?;
+        diesel::update(
+            config_dsl::track_notifications_config.filter(config_dsl::server_id.eq(server_id)),
+        )
+        .set(config_dsl::tts_enabled.eq(new_state))
+        .execute(&mut conn)?;
+
+        let state_str = if new_state == 1 {
+            "enabled"
+        } else {
+            "disabled"
+        };
+        ctx.say(format!(
+            "✅ TTS notifications are now **{}** for this server.",
+            state_str
+        ))
+        .await?;
     } else {
         ctx.say("❌ No tracking configuration found for this server. Please run `/track setup_tts` first.").await?;
     }
-    
+
     Ok(())
 }
 
@@ -169,31 +195,33 @@ async fn setup_dashboard(
     server_id: i32,
 ) -> Result<(), Error> {
     ctx.defer().await?;
-    
+
     let channel_id = ctx.channel_id();
-    
+
     // Create an initial placeholder message
     let msg = ctx.say("Setting up Tracking Dashboard...").await?;
     let message_id = msg.message().await?.id;
-    
+
     let mut conn = ctx.data().db_pool.get()?;
-    
-    use db::schema::track_notifications_config::dsl as config_dsl;
+
     use db::models::NewTrackNotificationsConfig;
-    
+    use db::schema::track_notifications_config::dsl as config_dsl;
+
     // Check if config exists
     let existing: i64 = config_dsl::track_notifications_config
         .filter(config_dsl::server_id.eq(server_id))
         .count()
         .get_result(&mut conn)?;
-        
+
     if existing > 0 {
-        diesel::update(config_dsl::track_notifications_config.filter(config_dsl::server_id.eq(server_id)))
-            .set((
-                config_dsl::discord_channel_id.eq(Some(channel_id.to_string())),
-                config_dsl::dashboard_message_id.eq(Some(message_id.to_string())),
-            ))
-            .execute(&mut conn)?;
+        diesel::update(
+            config_dsl::track_notifications_config.filter(config_dsl::server_id.eq(server_id)),
+        )
+        .set((
+            config_dsl::discord_channel_id.eq(Some(channel_id.to_string())),
+            config_dsl::dashboard_message_id.eq(Some(message_id.to_string())),
+        ))
+        .execute(&mut conn)?;
     } else {
         diesel::insert_into(config_dsl::track_notifications_config)
             .values(NewTrackNotificationsConfig {
@@ -209,12 +237,19 @@ async fn setup_dashboard(
             })
             .execute(&mut conn)?;
     }
-    
+
     // Trigger an immediate refresh
-    if let Err(e) = crate::tracking::dashboard::refresh_dashboard(ctx.http(), &ctx.data().db_pool, server_id).await {
-        ctx.say(format!("Dashboard initialized, but failed to render immediately: {}", e)).await?;
+    if let Err(e) =
+        crate::tracking::dashboard::refresh_dashboard(ctx.http(), &ctx.data().db_pool, server_id)
+            .await
+    {
+        ctx.say(format!(
+            "Dashboard initialized, but failed to render immediately: {}",
+            e
+        ))
+        .await?;
     }
-    
+
     Ok(())
 }
 
@@ -225,24 +260,24 @@ async fn add(
     #[description = "Server ID"]
     #[autocomplete = "crate::autocomplete::autocomplete_server"]
     server_id: i32,
-    #[description = "Steam ID 64"]
-    steam_id: String,
+    #[description = "Steam ID 64"] steam_id: String,
 ) -> Result<(), Error> {
     ctx.defer().await?;
-    
+
     let mut conn = ctx.data().db_pool.get()?;
-    
+
     let existing: i64 = players_dsl::tracked_players
         .filter(players_dsl::server_id.eq(server_id))
         .filter(players_dsl::steam_id.eq(&steam_id))
         .count()
         .get_result(&mut conn)?;
-        
+
     if existing > 0 {
-        ctx.say(format!("Player {} is already being tracked.", steam_id)).await?;
+        ctx.say(format!("Player {} is already being tracked.", steam_id))
+            .await?;
         return Ok(());
     }
-    
+
     diesel::insert_into(players_dsl::tracked_players)
         .values(NewTrackedPlayer {
             group_id: None,
@@ -254,12 +289,19 @@ async fn add(
             is_online: 0,
         })
         .execute(&mut conn)?;
-        
-    if let Err(e) = crate::tracking::dashboard::refresh_dashboard(ctx.http(), &ctx.data().db_pool, server_id).await {
+
+    if let Err(e) =
+        crate::tracking::dashboard::refresh_dashboard(ctx.http(), &ctx.data().db_pool, server_id)
+            .await
+    {
         tracing::error!("Failed to refresh dashboard: {}", e);
     }
-        
-    ctx.say(format!("✅ Added {} to the tracking list. The watchdog will sync their profile soon.", steam_id)).await?;
+
+    ctx.say(format!(
+        "✅ Added {} to the tracking list. The watchdog will sync their profile soon.",
+        steam_id
+    ))
+    .await?;
     Ok(())
 }
 
@@ -270,27 +312,34 @@ async fn remove(
     #[description = "Server ID"]
     #[autocomplete = "crate::autocomplete::autocomplete_server"]
     server_id: i32,
-    #[description = "Steam ID 64"]
-    steam_id: String,
+    #[description = "Steam ID 64"] steam_id: String,
 ) -> Result<(), Error> {
     ctx.defer().await?;
     let mut conn = ctx.data().db_pool.get()?;
-    
+
     let deleted = diesel::delete(
         players_dsl::tracked_players
             .filter(players_dsl::server_id.eq(server_id))
-            .filter(players_dsl::steam_id.eq(&steam_id))
-    ).execute(&mut conn)?;
-    
+            .filter(players_dsl::steam_id.eq(&steam_id)),
+    )
+    .execute(&mut conn)?;
+
     if deleted > 0 {
-        if let Err(e) = crate::tracking::dashboard::refresh_dashboard(ctx.http(), &ctx.data().db_pool, server_id).await {
+        if let Err(e) = crate::tracking::dashboard::refresh_dashboard(
+            ctx.http(),
+            &ctx.data().db_pool,
+            server_id,
+        )
+        .await
+        {
             tracing::error!("Failed to refresh dashboard: {}", e);
         }
-        ctx.say(format!("✅ Removed {} from tracking.", steam_id)).await?;
+        ctx.say(format!("✅ Removed {} from tracking.", steam_id))
+            .await?;
     } else {
         ctx.say("Player not found in tracking list.").await?;
     }
-    
+
     Ok(())
 }
 
@@ -306,8 +355,7 @@ async fn group_create(
     #[description = "Server ID"]
     #[autocomplete = "crate::autocomplete::autocomplete_server"]
     server_id: i32,
-    #[description = "Group Name"]
-    name: String,
+    #[description = "Group Name"] name: String,
 ) -> Result<(), Error> {
     let mut conn = ctx.data().db_pool.get()?;
     diesel::insert_into(groups_dsl::track_groups)
@@ -317,8 +365,9 @@ async fn group_create(
             color: None,
         })
         .execute(&mut conn)?;
-        
-    ctx.say(format!("✅ Created tracking group: {}", name)).await?;
+
+    ctx.say(format!("✅ Created tracking group: {}", name))
+        .await?;
     Ok(())
 }
 
@@ -329,30 +378,34 @@ async fn group_assign(
     #[description = "Server ID"]
     #[autocomplete = "crate::autocomplete::autocomplete_server"]
     server_id: i32,
-    #[description = "Steam ID 64"]
-    steam_id: String,
-    #[description = "Group ID"]
-    group_id: i32,
+    #[description = "Steam ID 64"] steam_id: String,
+    #[description = "Group ID"] group_id: i32,
 ) -> Result<(), Error> {
     let mut conn = ctx.data().db_pool.get()?;
-    
+
     let updated = diesel::update(
         players_dsl::tracked_players
             .filter(players_dsl::server_id.eq(server_id))
-            .filter(players_dsl::steam_id.eq(&steam_id))
+            .filter(players_dsl::steam_id.eq(&steam_id)),
     )
     .set(players_dsl::group_id.eq(group_id))
     .execute(&mut conn)?;
-    
+
     if updated > 0 {
-        if let Err(e) = crate::tracking::dashboard::refresh_dashboard(ctx.http(), &ctx.data().db_pool, server_id).await {
+        if let Err(e) = crate::tracking::dashboard::refresh_dashboard(
+            ctx.http(),
+            &ctx.data().db_pool,
+            server_id,
+        )
+        .await
+        {
             tracing::error!("Failed to refresh dashboard: {}", e);
         }
         ctx.say("✅ Player assigned to group.").await?;
     } else {
         ctx.say("Player not found on this server.").await?;
     }
-    
+
     Ok(())
 }
 
@@ -363,10 +416,10 @@ pub async fn find(
     #[description = "Steam ID 64"] steam_id: String,
 ) -> Result<(), Error> {
     ctx.defer().await?;
-    
+
     let mut conn = ctx.data().db_pool.get()?;
     use db::schema::tracked_players::dsl as players_dsl;
-    
+
     // Check if we have their BM ID
     let bm_id_opt: Option<String> = players_dsl::tracked_players
         .filter(players_dsl::steam_id.eq(&steam_id))
@@ -375,7 +428,7 @@ pub async fn find(
         .first::<Option<String>>(&mut conn)
         .optional()?
         .flatten();
-        
+
     let bm_id = match bm_id_opt {
         Some(id) => id,
         None => {
@@ -388,19 +441,27 @@ pub async fn find(
                                 if let Some(atlas_bm_id) = ap.bm_player_id {
                                     let atlas_bm_str = atlas_bm_id.to_string();
                                     // Cache it
-                                    let _ = db::upsert_player_link(&mut conn, &steam_id, &atlas_bm_str);
+                                    let _ =
+                                        db::upsert_player_link(&mut conn, &steam_id, &atlas_bm_str);
                                     atlas_bm_str
                                 } else {
                                     ctx.say(format!("❌ Could not find a BattleMetrics ID for Steam ID `{}` on Atlas.", steam_id)).await?;
                                     return Ok(());
                                 }
                             } else {
-                                ctx.say(format!("❌ Player not found on Atlas Rust. Cannot resolve BM ID.")).await?;
+                                ctx.say(format!(
+                                    "❌ Player not found on Atlas Rust. Cannot resolve BM ID."
+                                ))
+                                .await?;
                                 return Ok(());
                             }
                         }
                         Err(e) => {
-                            ctx.say(format!("❌ Failed to query Atlas API to resolve BM ID: {}", e)).await?;
+                            ctx.say(format!(
+                                "❌ Failed to query Atlas API to resolve BM ID: {}",
+                                e
+                            ))
+                            .await?;
                             return Ok(());
                         }
                     }
@@ -412,26 +473,41 @@ pub async fn find(
             }
         }
     };
-    
+
     // Scrape BM profile
     let bm_client = crate::tracking::battlemetrics::client::BmScraperClient::new();
     match bm_client.scrape_player_profile(&bm_id).await {
         Ok(bm_player) => {
             if bm_player.is_online {
                 if let Some(server_id) = bm_player.current_server_id {
-                    let server_name = bm_client.get_server_name(&server_id).await.unwrap_or_else(|_| "Unknown Server".to_string());
-                    ctx.say(format!("✅ **{}** is currently **ONLINE** on **{}** (Server ID: {})", bm_player.current_name, server_name, server_id)).await?;
+                    let server_name = bm_client
+                        .get_server_name(&server_id)
+                        .await
+                        .unwrap_or_else(|_| "Unknown Server".to_string());
+                    ctx.say(format!(
+                        "✅ **{}** is currently **ONLINE** on **{}** (Server ID: {})",
+                        bm_player.current_name, server_name, server_id
+                    ))
+                    .await?;
                 } else {
                     ctx.say(format!("✅ **{}** is currently **ONLINE**, but their current server is hidden or unavailable.", bm_player.current_name)).await?;
                 }
             } else {
-                ctx.say(format!("❌ **{}** is currently **OFFLINE**.", bm_player.current_name)).await?;
+                ctx.say(format!(
+                    "❌ **{}** is currently **OFFLINE**.",
+                    bm_player.current_name
+                ))
+                .await?;
             }
         }
         Err(e) => {
-            ctx.say(format!("❌ Failed to fetch BattleMetrics profile for BM ID `{}`: {}", bm_id, e)).await?;
+            ctx.say(format!(
+                "❌ Failed to fetch BattleMetrics profile for BM ID `{}`: {}",
+                bm_id, e
+            ))
+            .await?;
         }
     }
-    
+
     Ok(())
 }

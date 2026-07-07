@@ -1,14 +1,20 @@
 #![allow(clippy::pedantic)]
 use axum::{
-    extract::{Path, State, WebSocketUpgrade, ws::{WebSocket, Message}},
+    Json, Router,
+    extract::{
+        Path, State, WebSocketUpgrade,
+        ws::{Message, WebSocket},
+    },
     response::IntoResponse,
     routing::{get, post},
-    Router, Json,
 };
 use db::{
     DbPool, establish_connection_pool,
-    models::{PairedServer, FcmCredential, PlayerStat},
-    schema::{paired_servers::dsl as ps_dsl, fcm_credentials::dsl as fcm_dsl, player_stats::dsl as stats_dsl},
+    models::{FcmCredential, PairedServer, PlayerStat},
+    schema::{
+        fcm_credentials::dsl as fcm_dsl, paired_servers::dsl as ps_dsl,
+        player_stats::dsl as stats_dsl,
+    },
 };
 use diesel::prelude::*;
 use rustplus::RustPlusClient;
@@ -17,7 +23,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::{Mutex, broadcast};
-use tracing::{info, error};
+use tracing::{error, info};
 
 pub mod auth;
 
@@ -52,7 +58,8 @@ async fn main() -> anyhow::Result<()> {
 
     let oauth_config = OAuthConfig {
         client_id: std::env::var("DISCORD_CLIENT_ID").expect("DISCORD_CLIENT_ID must be set"),
-        client_secret: std::env::var("DISCORD_CLIENT_SECRET").expect("DISCORD_CLIENT_SECRET must be set"),
+        client_secret: std::env::var("DISCORD_CLIENT_SECRET")
+            .expect("DISCORD_CLIENT_SECRET must be set"),
         redirect_uri: std::env::var("OAUTH_REDIRECT_URI").expect("OAUTH_REDIRECT_URI must be set"),
     };
 
@@ -82,20 +89,44 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/server/{id}/time", get(get_time))
         .route("/api/server/{id}/chat", post(send_chat))
         .route("/api/server/{id}/entity/{entity_id}", get(get_entity))
-        .route("/api/server/{id}/entity/{entity_id}/toggle", post(toggle_entity))
-        .route("/api/server/{id}/entity/{entity_id}/subscription", get(check_subscription))
-        .route("/api/server/{id}/entity/{entity_id}/subscription", post(set_subscription))
+        .route(
+            "/api/server/{id}/entity/{entity_id}/toggle",
+            post(toggle_entity),
+        )
+        .route(
+            "/api/server/{id}/entity/{entity_id}/subscription",
+            get(check_subscription),
+        )
+        .route(
+            "/api/server/{id}/entity/{entity_id}/subscription",
+            post(set_subscription),
+        )
         .route("/api/server/{id}/clan", get(get_clan_info))
         .route("/api/server/{id}/clan/chat", get(get_clan_chat))
         .route("/api/server/{id}/clan/chat", post(send_clan_message))
         .route("/api/server/{id}/clan/motd", post(set_clan_motd))
         .route("/api/server/{id}/nexus/{app_key}", get(get_nexus_auth))
-        .route("/api/server/{id}/camera/{camera_id}/subscribe", post(camera_subscribe))
-        .route("/api/server/{id}/camera/{camera_id}/unsubscribe", post(camera_unsubscribe))
-        .route("/api/server/{id}/camera/{camera_id}/input", post(camera_input))
+        .route(
+            "/api/server/{id}/camera/{camera_id}/subscribe",
+            post(camera_subscribe),
+        )
+        .route(
+            "/api/server/{id}/camera/{camera_id}/unsubscribe",
+            post(camera_unsubscribe),
+        )
+        .route(
+            "/api/server/{id}/camera/{camera_id}/input",
+            post(camera_input),
+        )
         .route("/api/server/{id}/camera/{camera_id}/ptz", post(camera_ptz))
-        .route("/api/server/{id}/camera/{camera_id}/stream", get(camera_stream))
-        .route("/api/server/{id}/camera/{camera_id}/stream/raw", get(camera_stream_raw))
+        .route(
+            "/api/server/{id}/camera/{camera_id}/stream",
+            get(camera_stream),
+        )
+        .route(
+            "/api/server/{id}/camera/{camera_id}/stream/raw",
+            get(camera_stream_raw),
+        )
         .route("/api/server/{id}/ws", get(ws_handler))
         .with_state(state);
 
@@ -107,14 +138,21 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn get_or_connect_client(server_id: i32, state: &ApiState) -> Option<(Arc<RustPlusClient>, broadcast::Receiver<rustplus::events::RustEvent>)> {
+async fn get_or_connect_client(
+    server_id: i32,
+    state: &ApiState,
+) -> Option<(
+    Arc<RustPlusClient>,
+    broadcast::Receiver<rustplus::events::RustEvent>,
+)> {
     let mut clients = state.clients.lock().await;
     let mut events = state.events.lock().await;
 
     if let (Some(client), Some(tx)) = (clients.get(&server_id), events.get(&server_id))
-        && client.is_connected() {
-            return Some((client.clone(), tx.subscribe()));
-        }
+        && client.is_connected()
+    {
+        return Some((client.clone(), tx.subscribe()));
+    }
 
     let mut conn = match state.db_pool.get() {
         Ok(c) => c,
@@ -129,13 +167,16 @@ async fn get_or_connect_client(server_id: i32, state: &ApiState) -> Option<(Arc<
         Err(_) => return None,
     };
 
-    let cred: FcmCredential = match fcm_dsl::fcm_credentials.find(server.fcm_credential_id).first(&mut conn) {
+    let cred: FcmCredential = match fcm_dsl::fcm_credentials
+        .find(server.fcm_credential_id)
+        .first(&mut conn)
+    {
         Ok(c) => c,
         Err(_) => return None,
     };
 
     let steam_id = cred.steam_id.parse::<u64>().unwrap_or(0);
-    
+
     let mut client = RustPlusClient::new(
         server.server_ip.clone(),
         u16::try_from(server.server_port).unwrap_or(28082),
@@ -161,7 +202,9 @@ async fn get_or_connect_client(server_id: i32, state: &ApiState) -> Option<(Arc<
         tokio::spawn(async move {
             while let Ok(msg) = rx.recv().await {
                 if let Some(broadcast) = msg.broadcast {
-                    let _ = tx_clone.send(rustplus::events::RustEvent::RawBroadcast(Box::new(broadcast)));
+                    let _ = tx_clone.send(rustplus::events::RustEvent::RawBroadcast(Box::new(
+                        broadcast,
+                    )));
                 }
             }
         });
@@ -169,7 +212,9 @@ async fn get_or_connect_client(server_id: i32, state: &ApiState) -> Option<(Arc<
 
     let mut monitor_loop = rustplus::monitor::MonitorLoop::new(client.clone(), tx.clone());
     monitor_loop.register(Box::new(rustplus::monitors::cargo::CargoMonitor::new()));
-    monitor_loop.register(Box::new(rustplus::monitors::explosion::ExplosionMonitor::new()));
+    monitor_loop.register(Box::new(
+        rustplus::monitors::explosion::ExplosionMonitor::new(),
+    ));
     tokio::spawn(monitor_loop.run());
 
     Some((arc_client, event_rx))
@@ -186,19 +231,25 @@ async fn list_servers(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
         Err(_) => return Json(json!({"error": "db"})),
     };
 
-    let json_servers: Vec<_> = servers.into_iter().map(|s| {
-        json!({
-            "id": s.id,
-            "name": s.name,
-            "ip": s.server_ip,
-            "port": s.server_port
+    let json_servers: Vec<_> = servers
+        .into_iter()
+        .map(|s| {
+            json!({
+                "id": s.id,
+                "name": s.name,
+                "ip": s.server_ip,
+                "port": s.server_port
+            })
         })
-    }).collect();
+        .collect();
 
     Json(json!(json_servers))
 }
 
-async fn get_map(State(state): State<Arc<ApiState>>, Path(server_id): Path<i32>) -> impl IntoResponse {
+async fn get_map(
+    State(state): State<Arc<ApiState>>,
+    Path(server_id): Path<i32>,
+) -> impl IntoResponse {
     let (client, _) = match get_or_connect_client(server_id, &state).await {
         Some(c) => c,
         None => return Json(json!({"error": "connection failed"})),
@@ -210,12 +261,20 @@ async fn get_map(State(state): State<Arc<ApiState>>, Path(server_id): Path<i32>)
     };
 
     let markers = match client.get_map_markers().await {
-        Ok(res) => res.response.and_then(|r| r.map_markers).map(|m| m.markers).unwrap_or_default(),
+        Ok(res) => res
+            .response
+            .and_then(|r| r.map_markers)
+            .map(|m| m.markers)
+            .unwrap_or_default(),
         Err(_) => vec![],
     };
 
     let monuments = match client.get_map().await {
-        Ok(res) => res.response.and_then(|r| r.map).map(|m| m.monuments).unwrap_or_default(),
+        Ok(res) => res
+            .response
+            .and_then(|r| r.map)
+            .map(|m| m.monuments)
+            .unwrap_or_default(),
         Err(_) => vec![],
     };
 
@@ -226,7 +285,10 @@ async fn get_map(State(state): State<Arc<ApiState>>, Path(server_id): Path<i32>)
     }))
 }
 
-async fn get_stats(State(state): State<Arc<ApiState>>, Path(server_id): Path<i32>) -> impl IntoResponse {
+async fn get_stats(
+    State(state): State<Arc<ApiState>>,
+    Path(server_id): Path<i32>,
+) -> impl IntoResponse {
     let mut conn = match state.db_pool.get() {
         Ok(c) => c,
         Err(_) => return Json(json!({"error": "db"})),
@@ -234,9 +296,10 @@ async fn get_stats(State(state): State<Arc<ApiState>>, Path(server_id): Path<i32
 
     let stats: Vec<PlayerStat> = match stats_dsl::player_stats
         .filter(stats_dsl::server_id.eq(server_id))
-        .load::<PlayerStat>(&mut conn) {
-            Ok(s) => s,
-            Err(_) => return Json(json!({"error": "db"})),
+        .load::<PlayerStat>(&mut conn)
+    {
+        Ok(s) => s,
+        Err(_) => return Json(json!({"error": "db"})),
     };
 
     // Basic aggregation
@@ -275,34 +338,42 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<ApiState>, server_id: i
         let payload = match event {
             rustplus::events::RustEvent::CargoSpawned => json!({"type": "cargo_spawned"}),
             rustplus::events::RustEvent::MarkerSnapshot(m) => json!({"type": "markers", "data": m}),
-            rustplus::events::RustEvent::CameraMotion { camera_id, player_count, names } => {
+            rustplus::events::RustEvent::CameraMotion {
+                camera_id,
+                player_count,
+                names,
+            } => {
                 json!({
                     "type": "camera_motion",
                     "camera_id": camera_id,
                     "player_count": player_count,
                     "names": names
                 })
-            },
+            }
             rustplus::events::RustEvent::ExplosionOccurred { position } => {
                 json!({
                     "type": "explosion",
                     "data": { "x": position.0, "y": position.1 }
                 })
-            },
+            }
             rustplus::events::RustEvent::RawBroadcast(b) => {
                 json!({
                     "type": "broadcast",
                     "data": b
                 })
-            },
+            }
             // Fallback for others
             _ => json!({"type": "other"}),
         };
 
         if let Ok(text) = serde_json::to_string(&payload)
-            && socket.send(Message::Text(axum::extract::ws::Utf8Bytes::from(text))).await.is_err() {
-                break;
-            }
+            && socket
+                .send(Message::Text(axum::extract::ws::Utf8Bytes::from(text)))
+                .await
+                .is_err()
+        {
+            break;
+        }
     }
 }
 
@@ -318,7 +389,10 @@ struct PtzPayload {
     action: String, // "zoom", "shoot", "reload"
 }
 
-async fn get_info(State(state): State<Arc<ApiState>>, Path(server_id): Path<i32>) -> impl IntoResponse {
+async fn get_info(
+    State(state): State<Arc<ApiState>>,
+    Path(server_id): Path<i32>,
+) -> impl IntoResponse {
     let Some((client, _)) = get_or_connect_client(server_id, &state).await else {
         return Json(json!({"error": "connection failed"}));
     };
@@ -331,13 +405,20 @@ async fn get_info(State(state): State<Arc<ApiState>>, Path(server_id): Path<i32>
     Json(json!({"info": info}))
 }
 
-async fn get_markers(State(state): State<Arc<ApiState>>, Path(server_id): Path<i32>) -> impl IntoResponse {
+async fn get_markers(
+    State(state): State<Arc<ApiState>>,
+    Path(server_id): Path<i32>,
+) -> impl IntoResponse {
     let Some((client, _)) = get_or_connect_client(server_id, &state).await else {
         return Json(json!({"error": "connection failed"}));
     };
 
     let markers = match client.get_map_markers().await {
-        Ok(res) => res.response.and_then(|r| r.map_markers).map(|m| m.markers).unwrap_or_default(),
+        Ok(res) => res
+            .response
+            .and_then(|r| r.map_markers)
+            .map(|m| m.markers)
+            .unwrap_or_default(),
         Err(e) => return Json(json!({"error": e.to_string()})),
     };
 
@@ -386,7 +467,10 @@ async fn camera_input(
 
     // Camera input currently applies globally to whatever camera is subscribed on the client.
     // Ideally, the client has already subscribed via a WS message or another endpoint.
-    match client.send_camera_input(payload.buttons, payload.x, payload.y).await {
+    match client
+        .send_camera_input(payload.buttons, payload.x, payload.y)
+        .await
+    {
         Ok(_) => Json(json!({"success": true})),
         Err(e) => Json(json!({"error": e.to_string()})),
     }
@@ -425,7 +509,10 @@ struct TogglePayload {
     value: bool,
 }
 
-async fn get_team(State(state): State<Arc<ApiState>>, Path(server_id): Path<i32>) -> impl IntoResponse {
+async fn get_team(
+    State(state): State<Arc<ApiState>>,
+    Path(server_id): Path<i32>,
+) -> impl IntoResponse {
     let Some((client, _)) = get_or_connect_client(server_id, &state).await else {
         return Json(json!({"error": "connection failed"}));
     };
@@ -438,7 +525,10 @@ async fn get_team(State(state): State<Arc<ApiState>>, Path(server_id): Path<i32>
     Json(json!({"team": team}))
 }
 
-async fn get_time(State(state): State<Arc<ApiState>>, Path(server_id): Path<i32>) -> impl IntoResponse {
+async fn get_time(
+    State(state): State<Arc<ApiState>>,
+    Path(server_id): Path<i32>,
+) -> impl IntoResponse {
     let Some((client, _)) = get_or_connect_client(server_id, &state).await else {
         return Json(json!({"error": "connection failed"}));
     };
@@ -451,7 +541,11 @@ async fn get_time(State(state): State<Arc<ApiState>>, Path(server_id): Path<i32>
     Json(json!({"time": time}))
 }
 
-async fn send_chat(State(state): State<Arc<ApiState>>, Path(server_id): Path<i32>, Json(payload): Json<ChatPayload>) -> impl IntoResponse {
+async fn send_chat(
+    State(state): State<Arc<ApiState>>,
+    Path(server_id): Path<i32>,
+    Json(payload): Json<ChatPayload>,
+) -> impl IntoResponse {
     let Some((client, _)) = get_or_connect_client(server_id, &state).await else {
         return Json(json!({"error": "connection failed"}));
     };
@@ -462,7 +556,10 @@ async fn send_chat(State(state): State<Arc<ApiState>>, Path(server_id): Path<i32
     }
 }
 
-async fn get_entity(State(state): State<Arc<ApiState>>, Path((server_id, entity_id)): Path<(i32, u32)>) -> impl IntoResponse {
+async fn get_entity(
+    State(state): State<Arc<ApiState>>,
+    Path((server_id, entity_id)): Path<(i32, u32)>,
+) -> impl IntoResponse {
     let Some((client, _)) = get_or_connect_client(server_id, &state).await else {
         return Json(json!({"error": "connection failed"}));
     };
@@ -475,7 +572,11 @@ async fn get_entity(State(state): State<Arc<ApiState>>, Path((server_id, entity_
     Json(json!({"entity": entity}))
 }
 
-async fn toggle_entity(State(state): State<Arc<ApiState>>, Path((server_id, entity_id)): Path<(i32, u32)>, Json(payload): Json<TogglePayload>) -> impl IntoResponse {
+async fn toggle_entity(
+    State(state): State<Arc<ApiState>>,
+    Path((server_id, entity_id)): Path<(i32, u32)>,
+    Json(payload): Json<TogglePayload>,
+) -> impl IntoResponse {
     let Some((client, _)) = get_or_connect_client(server_id, &state).await else {
         return Json(json!({"error": "connection failed"}));
     };
@@ -519,18 +620,27 @@ struct PromotePayload {
     steam_id: u64,
 }
 
-async fn get_team_chat(State(state): State<Arc<ApiState>>, Path(server_id): Path<i32>) -> impl IntoResponse {
+async fn get_team_chat(
+    State(state): State<Arc<ApiState>>,
+    Path(server_id): Path<i32>,
+) -> impl IntoResponse {
     let Some((client, _)) = get_or_connect_client(server_id, &state).await else {
         return Json(json!({"error": "connection failed"}));
     };
 
     match client.get_team_chat().await {
-        Ok(res) => Json(json!({"messages": res.response.and_then(|r| r.team_chat).map(|tc| tc.messages).unwrap_or_default()})),
+        Ok(res) => Json(
+            json!({"messages": res.response.and_then(|r| r.team_chat).map(|tc| tc.messages).unwrap_or_default()}),
+        ),
         Err(e) => Json(json!({"error": e.to_string()})),
     }
 }
 
-async fn promote_to_leader(State(state): State<Arc<ApiState>>, Path(server_id): Path<i32>, Json(payload): Json<PromotePayload>) -> impl IntoResponse {
+async fn promote_to_leader(
+    State(state): State<Arc<ApiState>>,
+    Path(server_id): Path<i32>,
+    Json(payload): Json<PromotePayload>,
+) -> impl IntoResponse {
     let Some((client, _)) = get_or_connect_client(server_id, &state).await else {
         return Json(json!({"error": "connection failed"}));
     };
@@ -541,18 +651,27 @@ async fn promote_to_leader(State(state): State<Arc<ApiState>>, Path(server_id): 
     }
 }
 
-async fn check_subscription(State(state): State<Arc<ApiState>>, Path((server_id, entity_id)): Path<(i32, u32)>) -> impl IntoResponse {
+async fn check_subscription(
+    State(state): State<Arc<ApiState>>,
+    Path((server_id, entity_id)): Path<(i32, u32)>,
+) -> impl IntoResponse {
     let Some((client, _)) = get_or_connect_client(server_id, &state).await else {
         return Json(json!({"error": "connection failed"}));
     };
 
     match client.check_subscription(entity_id).await {
-        Ok(res) => Json(json!({"is_subscribed": res.response.and_then(|r| r.flag).map(|f| f.value).unwrap_or_default()})),
+        Ok(res) => Json(
+            json!({"is_subscribed": res.response.and_then(|r| r.flag).map(|f| f.value).unwrap_or_default()}),
+        ),
         Err(e) => Json(json!({"error": e.to_string()})),
     }
 }
 
-async fn set_subscription(State(state): State<Arc<ApiState>>, Path((server_id, entity_id)): Path<(i32, u32)>, Json(payload): Json<TogglePayload>) -> impl IntoResponse {
+async fn set_subscription(
+    State(state): State<Arc<ApiState>>,
+    Path((server_id, entity_id)): Path<(i32, u32)>,
+    Json(payload): Json<TogglePayload>,
+) -> impl IntoResponse {
     let Some((client, _)) = get_or_connect_client(server_id, &state).await else {
         return Json(json!({"error": "connection failed"}));
     };
@@ -563,7 +682,10 @@ async fn set_subscription(State(state): State<Arc<ApiState>>, Path((server_id, e
     }
 }
 
-async fn get_clan_info(State(state): State<Arc<ApiState>>, Path(server_id): Path<i32>) -> impl IntoResponse {
+async fn get_clan_info(
+    State(state): State<Arc<ApiState>>,
+    Path(server_id): Path<i32>,
+) -> impl IntoResponse {
     let Some((client, _)) = get_or_connect_client(server_id, &state).await else {
         return Json(json!({"error": "connection failed"}));
     };
@@ -574,18 +696,27 @@ async fn get_clan_info(State(state): State<Arc<ApiState>>, Path(server_id): Path
     }
 }
 
-async fn get_clan_chat(State(state): State<Arc<ApiState>>, Path(server_id): Path<i32>) -> impl IntoResponse {
+async fn get_clan_chat(
+    State(state): State<Arc<ApiState>>,
+    Path(server_id): Path<i32>,
+) -> impl IntoResponse {
     let Some((client, _)) = get_or_connect_client(server_id, &state).await else {
         return Json(json!({"error": "connection failed"}));
     };
 
     match client.get_clan_chat().await {
-        Ok(res) => Json(json!({"messages": res.response.and_then(|r| r.clan_chat).map(|tc| tc.messages).unwrap_or_default()})),
+        Ok(res) => Json(
+            json!({"messages": res.response.and_then(|r| r.clan_chat).map(|tc| tc.messages).unwrap_or_default()}),
+        ),
         Err(e) => Json(json!({"error": e.to_string()})),
     }
 }
 
-async fn send_clan_message(State(state): State<Arc<ApiState>>, Path(server_id): Path<i32>, Json(payload): Json<ChatPayload>) -> impl IntoResponse {
+async fn send_clan_message(
+    State(state): State<Arc<ApiState>>,
+    Path(server_id): Path<i32>,
+    Json(payload): Json<ChatPayload>,
+) -> impl IntoResponse {
     let Some((client, _)) = get_or_connect_client(server_id, &state).await else {
         return Json(json!({"error": "connection failed"}));
     };
@@ -596,7 +727,11 @@ async fn send_clan_message(State(state): State<Arc<ApiState>>, Path(server_id): 
     }
 }
 
-async fn set_clan_motd(State(state): State<Arc<ApiState>>, Path(server_id): Path<i32>, Json(payload): Json<ChatPayload>) -> impl IntoResponse {
+async fn set_clan_motd(
+    State(state): State<Arc<ApiState>>,
+    Path(server_id): Path<i32>,
+    Json(payload): Json<ChatPayload>,
+) -> impl IntoResponse {
     let Some((client, _)) = get_or_connect_client(server_id, &state).await else {
         return Json(json!({"error": "connection failed"}));
     };
@@ -607,7 +742,10 @@ async fn set_clan_motd(State(state): State<Arc<ApiState>>, Path(server_id): Path
     }
 }
 
-async fn get_nexus_auth(State(state): State<Arc<ApiState>>, Path((server_id, app_key)): Path<(i32, String)>) -> impl IntoResponse {
+async fn get_nexus_auth(
+    State(state): State<Arc<ApiState>>,
+    Path((server_id, app_key)): Path<(i32, String)>,
+) -> impl IntoResponse {
     let Some((client, _)) = get_or_connect_client(server_id, &state).await else {
         return Json(json!({"error": "connection failed"}));
     };
@@ -618,7 +756,10 @@ async fn get_nexus_auth(State(state): State<Arc<ApiState>>, Path((server_id, app
     }
 }
 
-async fn get_map_image(State(state): State<Arc<ApiState>>, Path(server_id): Path<i32>) -> impl IntoResponse {
+async fn get_map_image(
+    State(state): State<Arc<ApiState>>,
+    Path(server_id): Path<i32>,
+) -> impl IntoResponse {
     let Some((client, _)) = get_or_connect_client(server_id, &state).await else {
         return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, vec![]).into_response();
     };
@@ -631,10 +772,17 @@ async fn get_map_image(State(state): State<Arc<ApiState>>, Path(server_id): Path
         Err(_) => return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, vec![]).into_response(),
     };
 
-    ([(axum::http::header::CONTENT_TYPE, "image/jpeg")], map.jpg_image).into_response()
+    (
+        [(axum::http::header::CONTENT_TYPE, "image/jpeg")],
+        map.jpg_image,
+    )
+        .into_response()
 }
 
-async fn get_map_meta(State(state): State<Arc<ApiState>>, Path(server_id): Path<i32>) -> impl IntoResponse {
+async fn get_map_meta(
+    State(state): State<Arc<ApiState>>,
+    Path(server_id): Path<i32>,
+) -> impl IntoResponse {
     let Some((client, _)) = get_or_connect_client(server_id, &state).await else {
         return Json(json!({"error": "connection failed"})).into_response();
     };
@@ -651,7 +799,8 @@ async fn get_map_meta(State(state): State<Arc<ApiState>>, Path(server_id): Path<
         "width": map.width,
         "height": map.height,
         "margin": map.ocean_margin
-    })).into_response()
+    }))
+    .into_response()
 }
 
 async fn camera_stream(
@@ -662,7 +811,12 @@ async fn camera_stream(
     ws.on_upgrade(move |socket| handle_camera_socket(socket, state, server_id, camera_id))
 }
 
-async fn handle_camera_socket(mut socket: WebSocket, state: Arc<ApiState>, server_id: i32, camera_id: String) {
+async fn handle_camera_socket(
+    mut socket: WebSocket,
+    state: Arc<ApiState>,
+    server_id: i32,
+    camera_id: String,
+) {
     let Some((client, _)) = get_or_connect_client(server_id, &state).await else {
         return;
     };
@@ -673,7 +827,11 @@ async fn handle_camera_socket(mut socket: WebSocket, state: Arc<ApiState>, serve
 
     while let Ok(frame_data) = rx.recv().await {
         // Create an axum body Bytes from the frame_data Vec<u8>
-        if socket.send(Message::Binary(axum::body::Bytes::from(frame_data))).await.is_err() {
+        if socket
+            .send(Message::Binary(axum::body::Bytes::from(frame_data)))
+            .await
+            .is_err()
+        {
             break;
         }
     }
@@ -687,7 +845,12 @@ async fn camera_stream_raw(
     ws.on_upgrade(move |socket| handle_camera_socket_raw(socket, state, server_id, camera_id))
 }
 
-async fn handle_camera_socket_raw(mut socket: WebSocket, state: Arc<ApiState>, server_id: i32, camera_id: String) {
+async fn handle_camera_socket_raw(
+    mut socket: WebSocket,
+    state: Arc<ApiState>,
+    server_id: i32,
+    camera_id: String,
+) {
     let Some((client, _)) = get_or_connect_client(server_id, &state).await else {
         return;
     };
@@ -702,9 +865,13 @@ async fn handle_camera_socket_raw(mut socket: WebSocket, state: Arc<ApiState>, s
     while let Ok(msg) = rx.recv().await {
         if let Some(broadcast) = msg.broadcast
             && let Some(rays) = broadcast.camera_rays
-                && let Ok(text) = serde_json::to_string(&rays)
-                    && socket.send(Message::Text(axum::extract::ws::Utf8Bytes::from(text))).await.is_err() {
-                        break;
-                    }
+            && let Ok(text) = serde_json::to_string(&rays)
+            && socket
+                .send(Message::Text(axum::extract::ws::Utf8Bytes::from(text)))
+                .await
+                .is_err()
+        {
+            break;
+        }
     }
 }

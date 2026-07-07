@@ -6,10 +6,10 @@ pub type Result<T, E = A2sError> = std::result::Result<T, E>;
 pub enum A2sError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    
+
     #[error("Timeout error: {0}")]
     Timeout(#[from] tokio::time::error::Elapsed),
-    
+
     #[error("Invalid packet format: {0}")]
     InvalidPacket(String),
 }

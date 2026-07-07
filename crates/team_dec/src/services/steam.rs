@@ -1,3 +1,4 @@
+use std::sync::LazyLock;
 use reqwest::Client;
 use scraper::{Html, Selector};
 use std::collections::HashMap;
@@ -7,6 +8,37 @@ use tokio::sync::RwLock;
 
 use crate::error::{Result, TeamDetectorError};
 use crate::models::Player;
+
+static STEAM_ID_REGEX: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r#","steamid":"(.*?)","#).unwrap());
+static CUSTOM_ID_REGEX: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r#"g_rgProfileData = \{"url":"https://steamcommunity\.com/id/(.*?)/""#)
+        .unwrap()
+});
+static COMMENTS_REGEX: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r#"InitializeCommentThread\(.*"total_count":(\d+),"#).unwrap());
+static FRIEND_HREF_REGEX: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r#"id/(.*?)(/|$)"#).unwrap());
+static COMMENT_STEAM_ID_REGEX: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r#"profiles/(.*?)(/|$)"#).unwrap());
+
+static SELECTOR_PERSONA_NAME: LazyLock<Selector> =
+    LazyLock::new(|| Selector::parse(".actual_persona_name").unwrap());
+static SELECTOR_IN_GAME_NAME: LazyLock<Selector> =
+    LazyLock::new(|| Selector::parse(".profile_in_game_name").unwrap());
+static SELECTOR_IN_GAME_HEADER: LazyLock<Selector> =
+    LazyLock::new(|| Selector::parse(".profile_in_game_header").unwrap());
+static SELECTOR_COMMENT_SPAN: LazyLock<Selector> =
+    LazyLock::new(|| Selector::parse("span[id^='commentthread_profile_'][id$='_totalcount']").unwrap());
+static SELECTOR_FRIEND_BLOCK: LazyLock<Selector> =
+    LazyLock::new(|| Selector::parse(".friend_block_v2").unwrap());
+static SELECTOR_FRIEND_LINK: LazyLock<Selector> =
+    LazyLock::new(|| Selector::parse("a.friend_block_link_overlay").unwrap());
+static SELECTOR_FRIEND_CONTENT: LazyLock<Selector> =
+    LazyLock::new(|| Selector::parse(".friend_block_content").unwrap());
+static SELECTOR_AUTHOR_LINK: LazyLock<Selector> =
+    LazyLock::new(|| Selector::parse(".commentthread_author_link").unwrap());
+static SELECTOR_BDI: LazyLock<Selector> = LazyLock::new(|| Selector::parse("bdi").unwrap());
 
 pub struct SteamService {
     client: Client,
@@ -35,29 +67,32 @@ impl SteamService {
         }
     }
 
-    fn log(&self, msg: &str) {
-        if self.debug {
-            println!("[SteamService] {}", msg);
-        }
-    }
-
     async fn request(&self, url: &str) -> Result<String> {
-        let mut last_req = self.last_request_time.lock().await;
-        let now = Instant::now();
-        let elapsed = now.duration_since(*last_req);
+        let wait_time = {
+            let mut last_req = self.last_request_time.lock().await;
+            let now = Instant::now();
+            let target = *last_req + self.request_delay;
 
-        if elapsed < self.request_delay {
-            let wait_time = self.request_delay - elapsed;
-            self.log(&format!(
-                "Rate limiting: Waiting {}ms...",
-                wait_time.as_millis()
-            ));
-            tokio::time::sleep(wait_time).await;
+            if target > now {
+                let wait = target.duration_since(now);
+                *last_req = target;
+                Some(wait)
+            } else {
+                *last_req = now;
+                None
+            }
+        };
+
+        if let Some(wait) = wait_time {
+            if self.debug {
+                tracing::debug!(wait_ms = wait.as_millis(), "Rate limiting: Waiting...");
+            }
+            tokio::time::sleep(wait).await;
         }
 
-        *last_req = Instant::now();
-
-        self.log(&format!("Requesting: {}", url));
+        if self.debug {
+            tracing::debug!(url = %url, "Requesting");
+        }
         let response = self.client.get(url).send().await?.error_for_status()?;
         let text = response.text().await?;
         Ok(text)
@@ -119,7 +154,6 @@ impl SteamService {
         let content = self
             .request(&self.url_profile_by_custom_id(custom_id))
             .await?;
-
         let steam_id = Self::extract_steam_id(&content);
         if steam_id.is_empty() {
             return Err(TeamDetectorError::NotFound(format!(
@@ -157,19 +191,14 @@ impl SteamService {
     }
 
     fn extract_steam_id(content: &str) -> String {
-        let re = regex::Regex::new(r#","steamid":"(.*?)","#).unwrap();
-        if let Some(caps) = re.captures(content) {
+        if let Some(caps) = STEAM_ID_REGEX.captures(content) {
             return caps.get(1).map_or("", |m| m.as_str()).to_string();
         }
         String::new()
     }
 
     fn extract_custom_id(content: &str) -> String {
-        let re = regex::Regex::new(
-            r#"g_rgProfileData = \{"url":"https://steamcommunity\.com/id/(.*?)/""#,
-        )
-        .unwrap();
-        if let Some(caps) = re.captures(content) {
+        if let Some(caps) = CUSTOM_ID_REGEX.captures(content) {
             return caps.get(1).map_or("", |m| m.as_str()).to_string();
         }
         String::new()
@@ -186,6 +215,10 @@ impl SteamService {
         Ok(Self::extract_steam_id(&content))
     }
 
+    /// Gets a custom ID for a Steam ID.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails.
     pub async fn get_custom_id_by_steam_id(&self, steam_id: &str) -> Result<String> {
         {
             let trans = self.custom_id_translation.read().await;
@@ -199,13 +232,16 @@ impl SteamService {
         Ok(Self::extract_custom_id(&content))
     }
 
+    /// Gets the profile name for a Steam ID.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails.
     pub async fn get_profile_name(&self, steam_id: &str) -> Result<String> {
         let content = self.get_profile_content_by_steam_id(steam_id).await?;
         let document = Html::parse_document(&content);
-        let selector = Selector::parse(".actual_persona_name").unwrap();
 
         let name = document
-            .select(&selector)
+            .select(&SELECTOR_PERSONA_NAME)
             .next()
             .map(|el| el.text().collect::<String>().trim().to_string())
             .unwrap_or_default();
@@ -213,20 +249,22 @@ impl SteamService {
         Ok(name)
     }
 
+    /// Gets the profile status for a Steam ID.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails.
     pub async fn get_profile_status(&self, steam_id: &str) -> Result<String> {
         let content = self.get_profile_content_by_steam_id(steam_id).await?;
         let document = Html::parse_document(&content);
 
-        let in_game_sel = Selector::parse(".profile_in_game_name").unwrap();
-        if let Some(el) = document.select(&in_game_sel).next() {
+        if let Some(el) = document.select(&SELECTOR_IN_GAME_NAME).next() {
             let in_game = el.text().collect::<String>().trim().to_string();
             if !in_game.is_empty() {
-                return Ok(format!("In-Game: {}", in_game));
+                return Ok(format!("In-Game: {in_game}"));
             }
         }
 
-        let header_sel = Selector::parse(".profile_in_game_header").unwrap();
-        if let Some(el) = document.select(&header_sel).next() {
+        if let Some(el) = document.select(&SELECTOR_IN_GAME_HEADER).next() {
             let header = el.text().collect::<String>().trim().to_string();
             if !header.is_empty() {
                 return Ok(header);
@@ -236,59 +274,61 @@ impl SteamService {
         Ok("Offline".to_string())
     }
 
+    /// Gets the number of comments for a Steam ID.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails.
     pub async fn get_number_of_comments(&self, steam_id: &str) -> Result<u32> {
         let content = self.get_profile_content_by_steam_id(steam_id).await?;
         let document = Html::parse_document(&content);
 
-        // Try span first
-        let span_sel =
-            Selector::parse("span[id^='commentthread_profile_'][id$='_totalcount']").unwrap();
-        if let Some(el) = document.select(&span_sel).next() {
+        if let Some(el) = document.select(&SELECTOR_COMMENT_SPAN).next() {
             let text = el.text().collect::<String>();
-            let num_str: String = text.chars().filter(|c| c.is_ascii_digit()).collect();
+            let num_str: String = text.chars().filter(char::is_ascii_digit).collect();
             if let Ok(num) = num_str.parse::<u32>() {
                 return Ok(num);
             }
         }
 
-        // Try script parsing
-        let re = regex::Regex::new(r#"InitializeCommentThread\(.*"total_count":(\d+),"#).unwrap();
-        if let Some(caps) = re.captures(&content)
-            && let Ok(num) = caps.get(1).unwrap().as_str().parse::<u32>() {
-                return Ok(num);
-            }
+        if let Some(caps) = COMMENTS_REGEX.captures(&content)
+            && let Some(m) = caps.get(1)
+            && let Ok(num) = m.as_str().parse::<u32>()
+        {
+            return Ok(num);
+        }
 
         Ok(0)
     }
 
+    /// Fetches a player's friends list from their Steam profile page.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or parsing fails.
     pub async fn get_friends(&self, steam_id: &str) -> Result<Vec<Player>> {
         let content = self.get_friends_content_by_steam_id(steam_id).await?;
         let mut friends = Vec::new();
         let mut custom_ids_to_cache = Vec::new();
-        
+
         {
             let document = Html::parse_document(&content);
-            let block_sel = Selector::parse(".friend_block_v2").unwrap();
-            let link_sel = Selector::parse("a.friend_block_link_overlay").unwrap();
-            let content_sel = Selector::parse(".friend_block_content").unwrap();
-            let custom_id_re = regex::Regex::new(r#"id/(.*?)(/|$)"#).unwrap();
 
-            for block in document.select(&block_sel) {
+            for block in document.select(&SELECTOR_FRIEND_BLOCK) {
                 let friend_steam_id = block.value().attr("data-steamid").unwrap_or("").to_string();
 
                 let mut href = String::new();
-                if let Some(link) = block.select(&link_sel).next() {
+                if let Some(link) = block.select(&SELECTOR_FRIEND_LINK).next() {
                     href = link.value().attr("href").unwrap_or("").to_string();
                 }
 
                 let mut custom_id = None;
-                if let Some(caps) = custom_id_re.captures(&href) {
-                    custom_id = Some(caps.get(1).unwrap().as_str().to_string());
+                if let Some(caps) = FRIEND_HREF_REGEX.captures(&href)
+                    && let Some(m) = caps.get(1)
+                {
+                    custom_id = Some(m.as_str().to_string());
                 }
 
                 let mut name = String::new();
-                if let Some(content_div) = block.select(&content_sel).next() {
-                    // Get direct text node content, ignoring children like <br>
+                if let Some(content_div) = block.select(&SELECTOR_FRIEND_CONTENT).next() {
                     let text: String = content_div
                         .children()
                         .filter_map(|node| node.value().as_text().map(|t| t.text.to_string()))
@@ -316,15 +356,17 @@ impl SteamService {
         if !custom_ids_to_cache.is_empty() {
             let mut trans = self.custom_id_translation.write().await;
             for (cid, sid) in custom_ids_to_cache {
-                if !trans.contains_key(&cid) {
-                    trans.insert(cid, sid);
-                }
+                trans.entry(cid).or_insert(sid);
             }
         }
 
         Ok(friends)
     }
 
+    /// Fetches authors from a specific comments page.
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails or parsing fails.
     pub async fn get_comments_page_authors(
         &self,
         steam_id: &str,
@@ -334,43 +376,43 @@ impl SteamService {
         let content = self.request(&url).await?;
 
         let document = Html::parse_document(&content);
-        let link_sel = Selector::parse(".commentthread_author_link").unwrap();
-        let bdi_sel = Selector::parse("bdi").unwrap();
 
         let mut authors = Vec::new();
         let mut total_read = 0;
 
-        let steam_id_re = regex::Regex::new(r#"profiles/(.*?)(/|$)"#).unwrap();
-        let custom_id_re = regex::Regex::new(r#"id/(.*?)(/|$)"#).unwrap();
-
-        for link in document.select(&link_sel) {
+        for link in document.select(&SELECTOR_AUTHOR_LINK) {
             total_read += 1;
             let href = link.value().attr("href").unwrap_or("").to_string();
 
             let mut name = String::new();
-            if let Some(bdi) = link.select(&bdi_sel).next() {
+            if let Some(bdi) = link.select(&SELECTOR_BDI).next() {
                 name = bdi.text().collect::<String>().trim().to_string();
             }
 
             let mut author_steam_id = None;
             let mut author_custom_id = None;
 
-            if let Some(caps) = steam_id_re.captures(&href) {
-                author_steam_id = Some(caps.get(1).unwrap().as_str().to_string());
-            } else if let Some(caps) = custom_id_re.captures(&href) {
-                author_custom_id = Some(caps.get(1).unwrap().as_str().to_string());
+            if let Some(caps) = COMMENT_STEAM_ID_REGEX.captures(&href) {
+                if let Some(m) = caps.get(1) {
+                    author_steam_id = Some(m.as_str().to_string());
+                }
+            } else if let Some(caps) = FRIEND_HREF_REGEX.captures(&href)
+                && let Some(m) = caps.get(1)
+            {
+                author_custom_id = Some(m.as_str().to_string());
             }
 
-            // Prevent duplicates in batch
             let duplicate = authors.iter().any(|a: &Player| {
                 if let Some(sid) = &author_steam_id
-                    && a.steam_id.as_ref() == Some(sid) {
-                        return true;
-                    }
+                    && a.steam_id.as_ref() == Some(sid)
+                {
+                    return true;
+                }
                 if let Some(cid) = &author_custom_id
-                    && a.custom_id.as_ref() == Some(cid) {
-                        return true;
-                    }
+                    && a.custom_id.as_ref() == Some(cid)
+                {
+                    return true;
+                }
                 false
             });
 

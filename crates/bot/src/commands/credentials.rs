@@ -1,5 +1,5 @@
-use db::models::NewFcmCredential;
 use crate::{Context, Error};
+use db::models::NewFcmCredential;
 use diesel::prelude::*;
 
 /// Manage FCM credentials

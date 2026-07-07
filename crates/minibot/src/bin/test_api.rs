@@ -11,12 +11,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let db_pool = db::establish_connection_pool(&env::var("DATABASE_URL")?);
     let mut conn = db_pool.get()?;
-    use db::schema::paired_servers::dsl::*;
     use db::schema::fcm_credentials::dsl as fcm_dsl;
+    use db::schema::paired_servers::dsl::*;
     use diesel::prelude::*;
 
     let server: db::models::PairedServer = paired_servers.first(&mut conn)?;
-    let cred: db::models::FcmCredential = fcm_dsl::fcm_credentials.find(server.fcm_credential_id).first(&mut conn)?;
+    let cred: db::models::FcmCredential = fcm_dsl::fcm_credentials
+        .find(server.fcm_credential_id)
+        .first(&mut conn)?;
 
     let steam_id = cred.steam_id.parse::<u64>()?;
     let port = u16::try_from(server.server_port)?;
@@ -56,11 +58,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(res) => {
             let markers = res.response.unwrap().map_markers.unwrap().markers;
             println!("get_map_markers Ok. Found {} markers.", markers.len());
-            let vending_markers: Vec<_> = markers.into_iter()
+            let vending_markers: Vec<_> = markers
+                .into_iter()
                 .filter(|m| m.r#type == rustplus::proto::AppMarkerType::VendingMachine as i32)
                 .collect();
             println!("Found {} vending markers.", vending_markers.len());
-            
+
             for marker in vending_markers {
                 for order in marker.sell_orders {
                     // Auto Turret ID is -2139580305, Scrap is -932201673
@@ -70,7 +73,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
-        },
+        }
         Err(e) => println!("get_map_markers Err: {}", e),
     }
 

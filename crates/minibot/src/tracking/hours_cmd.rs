@@ -1,9 +1,9 @@
 use crate::framework::MinibotData;
+use db::{get_bm_id_for_steam_id, upsert_player_link};
 use std::sync::Arc;
-use db::{upsert_player_link, get_bm_id_for_steam_id};
 
-use team_dec::services::steam::SteamService;
 use scraper::{Html, Selector};
+use team_dec::services::steam::SteamService;
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type PoiseContext<'a> = poise::Context<'a, Arc<MinibotData>, Error>;
@@ -11,10 +11,10 @@ type PoiseContext<'a> = poise::Context<'a, Arc<MinibotData>, Error>;
 pub async fn get_player_hours_text(
     db_pool: &db::DbPool,
     steam_id: String,
-    bm_id: Option<String>
+    bm_id: Option<String>,
 ) -> Result<String, anyhow::Error> {
     let mut conn = db_pool.get()?;
-    
+
     // 1. Link accounts if bm_id is provided
     let final_bm_id = if let Some(ref new_bm_id) = bm_id {
         if !new_bm_id.is_empty() {
@@ -30,9 +30,12 @@ pub async fn get_player_hours_text(
 
     // 2. Fetch Steam hours
     let mut steam_hours_text = "Private / Unknown".to_string();
-    
+
     let steam_service = SteamService::new(false);
-    if let Ok(content) = steam_service.get_profile_content_by_steam_id(&steam_id).await {
+    if let Ok(content) = steam_service
+        .get_profile_content_by_steam_id(&steam_id)
+        .await
+    {
         let doc = Html::parse_document(&content);
         let game_sel = Selector::parse(".game_info_details").unwrap();
         let name_sel = Selector::parse(".game_name").unwrap();
@@ -90,13 +93,16 @@ pub async fn get_player_hours_text(
 pub async fn hours(
     ctx: PoiseContext<'_>,
     #[description = "Steam ID 64"] steam_id: String,
-    #[description = "BattleMetrics ID (Optional, links accounts if provided)"] bm_id: Option<String>,
+    #[description = "BattleMetrics ID (Optional, links accounts if provided)"] bm_id: Option<
+        String,
+    >,
 ) -> Result<(), Error> {
     ctx.defer().await?;
 
     let response_text = get_player_hours_text(&ctx.data().db_pool, steam_id, bm_id).await?;
 
-    ctx.send(poise::CreateReply::default().content(response_text)).await?;
+    ctx.send(poise::CreateReply::default().content(response_text))
+        .await?;
 
     Ok(())
 }

@@ -37,7 +37,6 @@ pub struct TeamDetectorBuilder {
     config: TeamDetectorConfig,
 }
 
-
 impl TeamDetectorBuilder {
     pub fn new() -> Self {
         Self::default()
@@ -91,9 +90,13 @@ impl TeamDetector {
         }
     }
 
-    fn log(&self, msg: &str) {
-        if self.config.debug {
-            println!("[TeamDetector] {}", msg);
+    fn get_node_id(steam_id: Option<&String>, custom_id: Option<&String>, name: &str) -> String {
+        if let Some(s) = steam_id {
+            format!("s:{}", s)
+        } else if let Some(c) = custom_id {
+            format!("c:{}", c)
+        } else {
+            format!("n:{}", name)
         }
     }
 
@@ -102,11 +105,13 @@ impl TeamDetector {
         server_id: &str,
         seed_steam_ids: Vec<String>,
     ) -> Result<(Vec<Player>, GraphData)> {
-        self.log(&format!(
-            "Starting search on server {} with {} seeds",
-            server_id,
-            seed_steam_ids.len()
-        ));
+        if self.config.debug {
+            tracing::info!(
+                server_id = %server_id,
+                seeds = seed_steam_ids.len(),
+                "Starting team detection"
+            );
+        }
 
         let bm_players = self.bm.get_players(server_id).await.unwrap_or_default();
         let mut found_players = Vec::new();
@@ -125,7 +130,9 @@ impl TeamDetector {
 
         while let Some((profile_steam_id, current_depth)) = queue.pop_front() {
             if self.config.ignore_list.contains(&profile_steam_id) {
-                self.log(&format!("Skipping ignored: {}", profile_steam_id));
+                if self.config.debug {
+                    tracing::debug!(profile_steam_id = %profile_steam_id, "Skipping ignored");
+                }
                 continue;
             }
 
@@ -134,7 +141,9 @@ impl TeamDetector {
             }
 
             if profiles_searched >= self.config.max_profiles {
-                self.log("Max profiles reached. Stopping search.");
+                if self.config.debug {
+                    tracing::info!("Max profiles reached. Stopping search.");
+                }
                 break;
             }
 
@@ -144,26 +153,37 @@ impl TeamDetector {
 
             profiles_searched += 1;
             searched_steam_ids.insert(profile_steam_id.clone());
-            println!(
+
+            tracing::info!(
                 "[{}/{}] Searching profile: {} (depth {})",
-                profiles_searched, self.config.max_profiles, profile_steam_id, current_depth
+                profiles_searched,
+                self.config.max_profiles,
+                profile_steam_id,
+                current_depth
             );
 
-            let profile_name = self
-                .steam
-                .get_profile_name(&profile_steam_id)
-                .await
-                .unwrap_or_default();
+            let profile_name = match self.steam.get_profile_name(&profile_steam_id).await {
+                Ok(name) => name,
+                Err(e) => {
+                    tracing::warn!(error = ?e, steam_id = %profile_steam_id, "Failed to get profile name");
+                    String::new()
+                }
+            };
+
             let profile_custom_id = self
                 .steam
                 .get_custom_id_by_steam_id(&profile_steam_id)
                 .await
                 .ok();
-            let profile_status = self
-                .steam
-                .get_profile_status(&profile_steam_id)
-                .await
-                .unwrap_or_else(|_| "Offline".to_string());
+
+            let profile_status = match self.steam.get_profile_status(&profile_steam_id).await {
+                Ok(status) => status,
+                Err(e) => {
+                    tracing::warn!(error = ?e, steam_id = %profile_steam_id, "Failed to get profile status");
+                    "Offline".to_string()
+                }
+            };
+
             let is_on_server = bm_players.contains(&profile_name);
 
             found_players.push(Player {
@@ -175,10 +195,16 @@ impl TeamDetector {
                 source_type: None,
             });
 
+            let node_id = Self::get_node_id(
+                Some(&profile_steam_id),
+                profile_custom_id.as_ref(),
+                &profile_name,
+            );
+
             nodes.insert(
-                profile_name.clone(),
+                node_id.clone(),
                 GraphNode {
-                    id: profile_name.clone(),
+                    id: node_id.clone(),
                     label: profile_name.clone(),
                     steam_id: Some(profile_steam_id.clone()),
                     custom_id: profile_custom_id.clone(),
@@ -197,7 +223,6 @@ impl TeamDetector {
             // 2. Hidden Friends via steamid.com
             if let Ok(hidden_friends) = self.steamid_com.get_friends(&profile_steam_id).await {
                 for hf in hidden_friends {
-                    // Only take depth 1 to match normal friends behavior
                     if hf.depth == 1 {
                         people.push(Player {
                             steam_id: Some(hf.steam_id64),
@@ -212,8 +237,9 @@ impl TeamDetector {
             }
 
             // 3. Comments (Optional)
-            if self.config.search_comments && self.config.search_comments_max_pages > 0
-                && let Ok(num_comments) = self.steam.get_number_of_comments(&profile_steam_id).await {
+            if self.config.search_comments && self.config.search_comments_max_pages > 0 {
+                if let Ok(num_comments) = self.steam.get_number_of_comments(&profile_steam_id).await
+                {
                     let mut remaining_comments = num_comments;
                     for i in 1..=self.config.search_comments_max_pages {
                         if remaining_comments == 0 {
@@ -229,6 +255,7 @@ impl TeamDetector {
                         }
                     }
                 }
+            }
 
             // Deduplicate
             people = Self::remove_duplicates(people);
@@ -244,11 +271,14 @@ impl TeamDetector {
 
             // Edges & Nodes
             for p in &people {
-                if !nodes.contains_key(&p.name) {
+                let p_node_id =
+                    Self::get_node_id(p.steam_id.as_ref(), p.custom_id.as_ref(), &p.name);
+
+                if !nodes.contains_key(&p_node_id) {
                     nodes.insert(
-                        p.name.clone(),
+                        p_node_id.clone(),
                         GraphNode {
-                            id: p.name.clone(),
+                            id: p_node_id.clone(),
                             label: p.name.clone(),
                             steam_id: p.steam_id.clone(),
                             custom_id: p.custom_id.clone(),
@@ -260,14 +290,14 @@ impl TeamDetector {
 
                 if self.config.include_offline || p.is_on_server == Some(true) {
                     edges.push(GraphEdge {
-                        from: profile_name.clone(),
-                        to: p.name.clone(),
+                        from: node_id.clone(),
+                        to: p_node_id.clone(),
                     });
                 }
             }
 
             peoples_connections.insert(
-                profile_steam_id.clone(),
+                node_id.clone(),
                 ConnectionData {
                     name: profile_name.clone(),
                     custom_id: profile_custom_id.clone(),
@@ -283,10 +313,12 @@ impl TeamDetector {
 
             for t in recursion_targets {
                 let mut target_steam_id = t.steam_id.clone();
-                if target_steam_id.is_none()
-                    && let Some(ref custom_id) = t.custom_id {
-                        target_steam_id = self.steam.get_steam_id_by_custom_id(custom_id).await.ok();
+                if target_steam_id.is_none() {
+                    if let Some(ref custom_id) = t.custom_id {
+                        target_steam_id =
+                            self.steam.get_steam_id_by_custom_id(custom_id).await.ok();
                     }
+                }
 
                 if let Some(sid) = target_steam_id {
                     let already_found = found_players
@@ -300,25 +332,23 @@ impl TeamDetector {
         }
 
         // Post-processing connections
-        let conns: Vec<_> = peoples_connections.values().collect();
-        for outer in &conns {
-            for inner in &conns {
-                if outer.name == inner.name {
-                    continue;
-                }
-                if outer.custom_id.is_some() && outer.custom_id == inner.custom_id {
+        let conns: Vec<_> = peoples_connections.iter().collect();
+        for (outer_id, _outer) in &conns {
+            for (inner_id, inner) in &conns {
+                if outer_id == inner_id {
                     continue;
                 }
 
                 let outer_in_inner = inner.connections.iter().any(|c| {
-                    (c.name == outer.name)
-                        || (c.custom_id.is_some() && c.custom_id == outer.custom_id)
+                    let c_node_id =
+                        Self::get_node_id(c.steam_id.as_ref(), c.custom_id.as_ref(), &c.name);
+                    &c_node_id == *outer_id
                 });
 
                 if outer_in_inner {
                     edges.push(GraphEdge {
-                        from: outer.name.clone(),
-                        to: inner.name.clone(),
+                        from: (*outer_id).clone(),
+                        to: (*inner_id).clone(),
                     });
                 }
             }
@@ -337,14 +367,7 @@ impl TeamDetector {
         let mut out = Vec::new();
 
         for p in people {
-            let key = if let Some(sid) = &p.steam_id {
-                format!("s:{}", sid)
-            } else if let Some(cid) = &p.custom_id {
-                format!("c:{}", cid)
-            } else {
-                format!("n:{}", p.name)
-            };
-
+            let key = Self::get_node_id(p.steam_id.as_ref(), p.custom_id.as_ref(), &p.name);
             if seen.insert(key) {
                 out.push(p);
             }

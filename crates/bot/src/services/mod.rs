@@ -1,3 +1,4 @@
+pub mod ai;
 pub mod battlemetrics;
 pub mod config_dashboard;
 pub mod dashboard;
@@ -9,4 +10,3 @@ pub mod rustplus_client;
 pub mod stat_tracker;
 pub mod steam;
 pub mod vending_subs;
-pub mod ai;

@@ -43,7 +43,12 @@ impl<'a> UnifiedContext<'a> {
                             text = text.chars().take(97).collect();
                             text.push_str("...");
                         }
-                        tracing::info!("Sending team msg line {} (len {}): {}", i, text.chars().count(), text);
+                        tracing::info!(
+                            "Sending team msg line {} (len {}): {}",
+                            i,
+                            text.chars().count(),
+                            text
+                        );
                         if let Err(e) = client.send_team_message(&text).await {
                             tracing::error!("Failed to send team message line {}: {}", i, e);
                             // Facepunch sometimes returns message_not_sent even if it succeeds!
@@ -69,12 +74,16 @@ impl<'a> UnifiedContext<'a> {
                 self.reply(message).await?;
             }
             ReplyTarget::Discord { channel_id } => {
-                let mut embed = serenity::CreateEmbed::new().description(message).color(0xCE422B);
+                let mut embed = serenity::CreateEmbed::new()
+                    .description(message)
+                    .color(0xCE422B);
                 if let Some(url) = thumbnail_url {
                     embed = embed.thumbnail(url);
                 }
                 let builder = serenity::CreateMessage::new().embed(embed);
-                channel_id.send_message(&self.data.discord_http, builder).await?;
+                channel_id
+                    .send_message(&self.data.discord_http, builder)
+                    .await?;
             }
         }
         Ok(())
@@ -84,28 +93,28 @@ impl<'a> UnifiedContext<'a> {
             ReplyTarget::InGameChat { .. } => format!(":{}: ", shortname),
             ReplyTarget::Discord { channel_id } => {
                 let clean_name = shortname.replace(".", "_").replace("-", "_");
-                
+
                 // Get the guild ID from the channel
                 let channel = match channel_id.to_channel(&self.data.discord_http).await {
                     Ok(c) => c,
                     Err(_) => return format!("[{}] ", shortname),
                 };
-                
+
                 let guild_id = match channel.guild() {
                     Some(g) => g.guild_id,
                     None => return format!("[{}] ", shortname), // Not in a guild
                 };
-                
+
                 // Fetch emojis
                 let emojis = match guild_id.emojis(&self.data.discord_http).await {
                     Ok(e) => e,
                     Err(_) => return format!("[{}] ", shortname),
                 };
-                
+
                 if let Some(emoji) = emojis.iter().find(|e| e.name == clean_name) {
                     return format!("<:{}:{}> ", emoji.name, emoji.id);
                 }
-                
+
                 // Need to upload
                 let url = format!("https://cdn.carbonmod.gg/items/{}.png", shortname);
                 let img_bytes = match reqwest::get(&url).await {
@@ -115,12 +124,15 @@ impl<'a> UnifiedContext<'a> {
                     },
                     Err(_) => return format!("[{}] ", shortname),
                 };
-                
+
                 use base64::Engine;
                 let b64 = base64::engine::general_purpose::STANDARD.encode(&img_bytes);
                 let data_uri = format!("data:image/png;base64,{}", b64);
-                
-                match guild_id.create_emoji(&self.data.discord_http, &clean_name, &data_uri).await {
+
+                match guild_id
+                    .create_emoji(&self.data.discord_http, &clean_name, &data_uri)
+                    .await
+                {
                     Ok(new_emoji) => format!("<:{}:{}> ", new_emoji.name, new_emoji.id),
                     Err(e) => {
                         tracing::warn!("Failed to create emoji {}: {}", clean_name, e);
@@ -141,14 +153,21 @@ pub struct CommandResponse {
 
 impl CommandResponse {
     pub fn text(pages: Vec<String>) -> Self {
-        Self { pages, thumbnail_url: None }
+        Self {
+            pages,
+            thumbnail_url: None,
+        }
     }
 }
 
 pub trait UnifiedCommand: Send + Sync {
     fn name(&self) -> &'static str;
     fn description(&self) -> &'static str;
-    fn execute<'a>(&'a self, ctx: &'a UnifiedContext<'a>, args: &'a [&'a str]) -> Pin<Box<dyn std::future::Future<Output = Result<CommandResponse>> + Send + 'a>>;
+    fn execute<'a>(
+        &'a self,
+        ctx: &'a UnifiedContext<'a>,
+        args: &'a [&'a str],
+    ) -> Pin<Box<dyn std::future::Future<Output = Result<CommandResponse>> + Send + 'a>>;
 }
 
 pub struct CommandRegistry {
@@ -166,7 +185,12 @@ impl CommandRegistry {
         self.commands.insert(cmd.name().to_string(), Arc::new(cmd));
     }
 
-    pub async fn dispatch(&self, name: &str, ctx: &UnifiedContext<'_>, args: &[&str]) -> Result<()> {
+    pub async fn dispatch(
+        &self,
+        name: &str,
+        ctx: &UnifiedContext<'_>,
+        args: &[&str],
+    ) -> Result<()> {
         if let Some(cmd) = self.commands.get(name) {
             match cmd.execute(ctx, args).await {
                 Ok(response) => {
@@ -185,7 +209,11 @@ impl CommandRegistry {
                                 let thumb = response.thumbnail_url.as_deref();
                                 ctx.reply_embed(&pages[0], thumb).await?;
                                 if pages.len() > 1 {
-                                    ctx.reply(&format!("(and {} more pages... use Discord for full view)", pages.len() - 1)).await?;
+                                    ctx.reply(&format!(
+                                        "(and {} more pages... use Discord for full view)",
+                                        pages.len() - 1
+                                    ))
+                                    .await?;
                                 }
                             }
                         }

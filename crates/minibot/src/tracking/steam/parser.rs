@@ -30,10 +30,12 @@ pub fn parse_profile(html: &str, steam_id64: String) -> Result<SteamProfile> {
 
     let persona_sel = Selector::parse(".actual_persona_name").expect("valid selector or regex");
     let title_sel = Selector::parse("title").expect("valid selector");
-    
-    let mut persona_name = document.select(&persona_sel).next()
+
+    let mut persona_name = document
+        .select(&persona_sel)
+        .next()
         .map(|el| el.text().collect::<String>().trim().to_string());
-        
+
     if persona_name.is_none() {
         if let Some(title_el) = document.select(&title_sel).next() {
             let title = title_el.text().collect::<String>();
@@ -46,7 +48,7 @@ pub fn parse_profile(html: &str, steam_id64: String) -> Result<SteamProfile> {
             }
         }
     }
-    
+
     let persona_name = persona_name.unwrap_or(steam_id64.clone());
 
     if is_not_setup {

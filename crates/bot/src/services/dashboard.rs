@@ -68,10 +68,7 @@ pub async fn backfill_cctv_channels(
 /// # Errors
 /// Returns an error if database query fails or Discord API fails.
 #[allow(clippy::collapsible_if)]
-pub async fn backfill_ai_channels(
-    db_pool: &DbPool,
-    ctx: &serenity::Context,
-) -> anyhow::Result<()> {
+pub async fn backfill_ai_channels(db_pool: &DbPool, ctx: &serenity::Context) -> anyhow::Result<()> {
     let mut conn = db_pool.get()?;
     let channels: Vec<DbServerChannel> = server_channels
         .filter(sc_dsl::ai_channel_id.is_null())
@@ -137,95 +134,95 @@ pub async fn handle_new_paired_server(
     let guild_id = guild_id_str.parse::<u64>()?;
     let guild_id = serenity::GuildId::new(guild_id);
 
-    let (category_id, dashboard_id, chat_id, alerts_id, config_id, cctv_id, ai_id) = if config.setup_mode
-        == "Auto"
-    {
-        info!("Auto-creating channels for server: {}", server.name);
+    let (category_id, dashboard_id, chat_id, alerts_id, config_id, cctv_id, ai_id) =
+        if config.setup_mode == "Auto" {
+            info!("Auto-creating channels for server: {}", server.name);
 
-        let category_name = format!("Rust - {}", server.name);
+            let category_name = format!("Rust - {}", server.name);
 
-        let category = guild_id
-            .create_channel(
-                &ctx.http,
-                serenity::CreateChannel::new(category_name).kind(serenity::ChannelType::Category),
+            let category = guild_id
+                .create_channel(
+                    &ctx.http,
+                    serenity::CreateChannel::new(category_name)
+                        .kind(serenity::ChannelType::Category),
+                )
+                .await?;
+
+            let dashboard_channel = guild_id
+                .create_channel(
+                    &ctx.http,
+                    serenity::CreateChannel::new("dashboard")
+                        .kind(serenity::ChannelType::Text)
+                        .category(category.id),
+                )
+                .await?;
+
+            let chat_channel = guild_id
+                .create_channel(
+                    &ctx.http,
+                    serenity::CreateChannel::new("team-chat")
+                        .kind(serenity::ChannelType::Text)
+                        .category(category.id),
+                )
+                .await?;
+
+            let alerts_channel = guild_id
+                .create_channel(
+                    &ctx.http,
+                    serenity::CreateChannel::new("alerts")
+                        .kind(serenity::ChannelType::Text)
+                        .category(category.id),
+                )
+                .await?;
+
+            let config_channel = guild_id
+                .create_channel(
+                    &ctx.http,
+                    serenity::CreateChannel::new("config")
+                        .kind(serenity::ChannelType::Text)
+                        .category(category.id),
+                )
+                .await?;
+
+            let cctv_channel = guild_id
+                .create_channel(
+                    &ctx.http,
+                    serenity::CreateChannel::new("cctv")
+                        .kind(serenity::ChannelType::Text)
+                        .category(category.id),
+                )
+                .await?;
+
+            let ai_channel = guild_id
+                .create_channel(
+                    &ctx.http,
+                    serenity::CreateChannel::new("ai-assistant")
+                        .kind(serenity::ChannelType::Text)
+                        .category(category.id),
+                )
+                .await?;
+
+            (
+                Some(category.id.get().to_string()),
+                Some(dashboard_channel.id.get().to_string()),
+                Some(chat_channel.id.get().to_string()),
+                Some(alerts_channel.id.get().to_string()),
+                Some(config_channel.id.get().to_string()),
+                Some(cctv_channel.id.get().to_string()),
+                Some(ai_channel.id.get().to_string()),
             )
-            .await?;
-
-        let dashboard_channel = guild_id
-            .create_channel(
-                &ctx.http,
-                serenity::CreateChannel::new("dashboard")
-                    .kind(serenity::ChannelType::Text)
-                    .category(category.id),
+        } else {
+            info!("Using manual channels for server: {}", server.name);
+            (
+                None,
+                config.manual_dashboard_channel_id.clone(),
+                config.manual_chat_channel_id.clone(),
+                config.manual_alerts_channel_id.clone(),
+                None,
+                config.manual_cctv_channel_id.clone(),
+                config.manual_ai_channel_id.clone(),
             )
-            .await?;
-
-        let chat_channel = guild_id
-            .create_channel(
-                &ctx.http,
-                serenity::CreateChannel::new("team-chat")
-                    .kind(serenity::ChannelType::Text)
-                    .category(category.id),
-            )
-            .await?;
-
-        let alerts_channel = guild_id
-            .create_channel(
-                &ctx.http,
-                serenity::CreateChannel::new("alerts")
-                    .kind(serenity::ChannelType::Text)
-                    .category(category.id),
-            )
-            .await?;
-
-        let config_channel = guild_id
-            .create_channel(
-                &ctx.http,
-                serenity::CreateChannel::new("config")
-                    .kind(serenity::ChannelType::Text)
-                    .category(category.id),
-            )
-            .await?;
-
-        let cctv_channel = guild_id
-            .create_channel(
-                &ctx.http,
-                serenity::CreateChannel::new("cctv")
-                    .kind(serenity::ChannelType::Text)
-                    .category(category.id),
-            )
-            .await?;
-
-        let ai_channel = guild_id
-            .create_channel(
-                &ctx.http,
-                serenity::CreateChannel::new("ai-assistant")
-                    .kind(serenity::ChannelType::Text)
-                    .category(category.id),
-            )
-            .await?;
-
-        (
-            Some(category.id.get().to_string()),
-            Some(dashboard_channel.id.get().to_string()),
-            Some(chat_channel.id.get().to_string()),
-            Some(alerts_channel.id.get().to_string()),
-            Some(config_channel.id.get().to_string()),
-            Some(cctv_channel.id.get().to_string()),
-            Some(ai_channel.id.get().to_string()),
-        )
-    } else {
-        info!("Using manual channels for server: {}", server.name);
-        (
-            None,
-            config.manual_dashboard_channel_id.clone(),
-            config.manual_chat_channel_id.clone(),
-            config.manual_alerts_channel_id.clone(),
-            None,
-            config.manual_cctv_channel_id.clone(),
-            config.manual_ai_channel_id.clone(),
-        )
-    };
+        };
 
     let Some(dash_id_str) = &dashboard_id else {
         error!(

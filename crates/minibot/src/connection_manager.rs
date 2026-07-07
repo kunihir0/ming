@@ -64,7 +64,7 @@ impl ConnectionManager {
             info!("Starting ConnectionManager watchdog...");
             loop {
                 tokio::time::sleep(std::time::Duration::from_secs(30)).await;
-                
+
                 let servers = {
                     let mut conn = match mgr.db_pool.get() {
                         Ok(c) => c,
@@ -88,7 +88,10 @@ impl ConnectionManager {
 
                 for server in servers {
                     if !active_clients.contains(&server.id) {
-                        warn!("Watchdog detecting disconnected server {}. Reconnecting...", server.id);
+                        warn!(
+                            "Watchdog detecting disconnected server {}. Reconnecting...",
+                            server.id
+                        );
                         if let Err(e) = mgr.connect(server.id).await {
                             debug!("Watchdog reconnect failed for {}: {}", server.id, e);
                         }
@@ -142,7 +145,10 @@ impl ConnectionManager {
         match client.connect().await {
             Ok(()) => {}
             Err(e) => {
-                debug!("Direct connect to {} failed ({}), retrying via proxy...", server.name, e);
+                debug!(
+                    "Direct connect to {} failed ({}), retrying via proxy...",
+                    server.name, e
+                );
                 client = RustPlusClient::new(
                     server.server_ip.clone(),
                     port,
@@ -150,7 +156,10 @@ impl ConnectionManager {
                     server.player_token,
                     true,
                 );
-                client.connect().await.context("Proxy connect also failed")?;
+                client
+                    .connect()
+                    .await
+                    .context("Proxy connect also failed")?;
                 proxy_used = true;
             }
         }
@@ -158,12 +167,17 @@ impl ConnectionManager {
         // Subscribe to team chat so the server actually sends us messages!
         if let Err(e) = client.get_team_chat().await {
             client.disconnect();
-            anyhow::bail!("Server unresponsive (possibly offline or restarting): {}", e);
+            anyhow::bail!(
+                "Server unresponsive (possibly offline or restarting): {}",
+                e
+            );
         }
 
         info!(
             "Connected to {} ({}:{}) {}",
-            server.name, server.server_ip, server.server_port,
+            server.name,
+            server.server_ip,
+            server.server_port,
             if proxy_used { "via proxy" } else { "directly" }
         );
 
@@ -234,7 +248,7 @@ impl ConnectionManager {
                 client.disconnect();
             }
         }
-        
+
         let mut conn = self.db_pool.get()?;
         use db::schema::paired_servers::dsl::*;
         use diesel::prelude::*;

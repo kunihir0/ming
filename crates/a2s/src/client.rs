@@ -34,10 +34,10 @@ impl A2sClient {
 
         // Bind to any local port
         let socket = UdpSocket::bind("0.0.0.0:0").await?;
-        
+
         let mut req = Vec::new();
         req.extend_from_slice(b"\xFF\xFF\xFF\xFFTSource Engine Query\0");
-        
+
         socket.send_to(&req, std_addr).await?;
 
         let mut buf = [0u8; 65536];
@@ -50,23 +50,23 @@ impl A2sClient {
             return Err(A2sError::InvalidPacket("Packet too short".to_string()));
         }
         let header = data.get_i32_le();
-        if header != -1 { 
+        if header != -1 {
             return Err(A2sError::InvalidPacket("Invalid packet header".to_string()));
         }
 
         let mut packet_type = data.get_u8();
-        
+
         // Handle Challenge for A2S_INFO
         if packet_type == 0x41 {
             let mut chal = vec![0; 4];
             data.copy_to_slice(&mut chal);
-            
+
             req.extend_from_slice(&chal);
             socket.send_to(&req, std_addr).await?;
-            
+
             let (len2, _) = timeout(self.timeout, socket.recv_from(&mut buf)).await??;
             data = BytesMut::from(&buf[..len2]);
-            
+
             if data.remaining() < 5 {
                 return Err(A2sError::InvalidPacket("Packet too short".to_string()));
             }
@@ -79,7 +79,10 @@ impl A2sClient {
 
         // 0x49 ('I') is the standard response for A2S_INFO
         if packet_type != 0x49 {
-            return Err(A2sError::InvalidPacket(format!("Unexpected packet type: {:#04x}", packet_type)));
+            return Err(A2sError::InvalidPacket(format!(
+                "Unexpected packet type: {:#04x}",
+                packet_type
+            )));
         }
 
         let protocol = data.get_u8();
@@ -105,18 +108,24 @@ impl A2sClient {
         if data.has_remaining() {
             let edf = data.get_u8();
             extra_data_flag = Some(edf);
-            
+
             // 0x80: Port
             if (edf & 0x80) != 0 {
-                if data.remaining() >= 2 { data.advance(2); }
+                if data.remaining() >= 2 {
+                    data.advance(2);
+                }
             }
             // 0x10: SteamID
             if (edf & 0x10) != 0 {
-                if data.remaining() >= 8 { data.advance(8); }
+                if data.remaining() >= 8 {
+                    data.advance(8);
+                }
             }
             // 0x40: Spectator
             if (edf & 0x40) != 0 {
-                if data.remaining() >= 2 { data.advance(2); }
+                if data.remaining() >= 2 {
+                    data.advance(2);
+                }
                 let _ = read_c_string(&mut data);
             }
             // 0x20: Keywords
@@ -138,7 +147,9 @@ impl A2sClient {
             }
             // 0x01: GameID
             if (edf & 0x01) != 0 {
-                if data.remaining() >= 8 { data.advance(8); }
+                if data.remaining() >= 8 {
+                    data.advance(8);
+                }
             }
         }
 
@@ -172,7 +183,7 @@ impl A2sClient {
             .ok_or_else(|| A2sError::InvalidPacket("Could not resolve address".to_string()))?;
 
         let socket = UdpSocket::bind("0.0.0.0:0").await?;
-        
+
         // 1. Initial request to get challenge
         let mut req = Vec::new();
         req.extend_from_slice(b"\xFF\xFF\xFF\xFFU\xFF\xFF\xFF\xFF");
@@ -183,7 +194,9 @@ impl A2sClient {
         let mut data = BytesMut::from(&buf[..len]);
 
         if data.remaining() < 5 {
-            return Err(A2sError::InvalidPacket("Challenge packet too short".to_string()));
+            return Err(A2sError::InvalidPacket(
+                "Challenge packet too short".to_string(),
+            ));
         }
 
         let header = data.get_i32_le();
@@ -192,27 +205,32 @@ impl A2sClient {
         }
 
         let packet_type = data.get_u8();
-        let challenge = if packet_type == 0x41 { // 'A'
+        let challenge = if packet_type == 0x41 {
+            // 'A'
             // We got a challenge response, read 4 byte challenge
             let mut chal = vec![0; 4];
             data.copy_to_slice(&mut chal);
             chal
         } else {
-            return Err(A2sError::InvalidPacket("Expected challenge response".to_string()));
+            return Err(A2sError::InvalidPacket(
+                "Expected challenge response".to_string(),
+            ));
         };
 
         // 2. Send request with challenge
         let mut req_chal = Vec::new();
         req_chal.extend_from_slice(b"\xFF\xFF\xFF\xFFU");
         req_chal.extend_from_slice(&challenge);
-        
+
         socket.send_to(&req_chal, std_addr).await?;
 
         let (len, _) = timeout(self.timeout, socket.recv_from(&mut buf)).await??;
         let mut data = BytesMut::from(&buf[..len]);
 
         if data.remaining() < 5 {
-            return Err(A2sError::InvalidPacket("Player payload packet too short".to_string()));
+            return Err(A2sError::InvalidPacket(
+                "Player payload packet too short".to_string(),
+            ));
         }
 
         let header = data.get_i32_le();
@@ -221,18 +239,26 @@ impl A2sClient {
         }
 
         let packet_type = data.get_u8();
-        if packet_type != 0x44 { // 'D'
-            return Err(A2sError::InvalidPacket(format!("Expected player payload response, got {:#04x}", packet_type)));
+        if packet_type != 0x44 {
+            // 'D'
+            return Err(A2sError::InvalidPacket(format!(
+                "Expected player payload response, got {:#04x}",
+                packet_type
+            )));
         }
 
         let player_count = data.get_u8();
         let mut players = Vec::new();
 
         for _ in 0..player_count {
-            if data.remaining() < 1 { break; }
+            if data.remaining() < 1 {
+                break;
+            }
             let index = data.get_u8();
             let name = read_c_string(&mut data)?;
-            if data.remaining() < 8 { break; }
+            if data.remaining() < 8 {
+                break;
+            }
             let score = data.get_i32_le();
             let duration = data.get_f32_le();
 
@@ -260,6 +286,7 @@ fn read_c_string(buf: &mut BytesMut) -> Result<String> {
         }
         bytes.push(b);
     }
-    
-    String::from_utf8(bytes).map_err(|_| A2sError::InvalidPacket("Invalid UTF-8 in string".to_string()))
+
+    String::from_utf8(bytes)
+        .map_err(|_| A2sError::InvalidPacket("Invalid UTF-8 in string".to_string()))
 }

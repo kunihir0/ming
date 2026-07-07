@@ -1,6 +1,6 @@
+use crate::{Context, Error};
 use db::models::GuildConfig;
 use db::schema::guild_configs::dsl::{guild_configs, guild_id as gc_guild_id};
-use crate::{Context, Error};
 use diesel::prelude::*;
 use poise::serenity_prelude as serenity;
 
@@ -23,7 +23,9 @@ pub async fn setup(
     #[description = "Chat Channel (Manual mode only)"] chat_channel: Option<serenity::Channel>,
     #[description = "Alerts Channel (Manual mode only)"] alerts_channel: Option<serenity::Channel>,
     #[description = "CCTV Channel (Manual mode only)"] cctv_channel: Option<serenity::Channel>,
-    #[description = "AI Assistant Channel (Manual mode only)"] ai_channel: Option<serenity::Channel>,
+    #[description = "AI Assistant Channel (Manual mode only)"] ai_channel: Option<
+        serenity::Channel,
+    >,
 ) -> Result<(), Error> {
     let guild_id_str = ctx.guild_id().ok_or("Must be run in a guild")?.to_string();
     let management_channel_id = ctx.channel_id().to_string();

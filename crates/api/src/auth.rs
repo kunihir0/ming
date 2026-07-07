@@ -1,19 +1,19 @@
+use crate::ApiState;
 use axum::{
+    Json,
     extract::{FromRequestParts, Query, State},
     http::request::Parts,
     response::{IntoResponse, Redirect},
-    Json,
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar};
 use db::{
-    models::{NewSession, NewUser, Session, User, NewUserRustplusCredential},
-    schema::{sessions, users, user_rustplus_credentials},
+    models::{NewSession, NewUser, NewUserRustplusCredential, Session, User},
+    schema::{sessions, user_rustplus_credentials, users},
 };
 use diesel::prelude::*;
-use rand::{distributions::Alphanumeric, Rng};
+use rand::{Rng, distributions::Alphanumeric};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use crate::ApiState;
 
 #[derive(Deserialize)]
 pub struct AuthQuery {
@@ -50,12 +50,15 @@ where
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let state = Arc::from_ref(state);
         let jar = CookieJar::from_headers(&parts.headers);
-        
-        let token = jar.get("session_id")
+
+        let token = jar
+            .get("session_id")
             .map(|c| c.value().to_string())
             .ok_or(axum::http::StatusCode::UNAUTHORIZED)?;
 
-        let mut conn = state.db_pool.get()
+        let mut conn = state
+            .db_pool
+            .get()
             .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
 
         let now = chrono::Utc::now().naive_utc();
@@ -67,7 +70,9 @@ where
             .first::<(Session, User)>(&mut conn)
             .map_err(|_| axum::http::StatusCode::UNAUTHORIZED)?;
 
-        Ok(AuthenticatedUser { user: session_data.1 })
+        Ok(AuthenticatedUser {
+            user: session_data.1,
+        })
     }
 }
 
@@ -107,7 +112,8 @@ pub async fn callback(
         ("redirect_uri", &state.oauth.redirect_uri),
     ];
 
-    let res = client.post("https://discord.com/api/oauth2/token")
+    let res = client
+        .post("https://discord.com/api/oauth2/token")
         .form(&params)
         .send()
         .await;
@@ -117,19 +123,39 @@ pub async fn callback(
             if !r.status().is_success() {
                 let status = r.status();
                 let text = r.text().await.unwrap_or_default();
-                return (axum::http::StatusCode::BAD_REQUEST, format!("Discord API Error ({}): {}", status, text)).into_response();
+                return (
+                    axum::http::StatusCode::BAD_REQUEST,
+                    format!("Discord API Error ({}): {}", status, text),
+                )
+                    .into_response();
             }
             let raw_json = r.text().await.unwrap_or_default();
             match serde_json::from_str::<DiscordTokenResponse>(&raw_json) {
                 Ok(t) => t,
-                Err(e) => return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to parse token. Error: {}. Raw JSON: {}", e, raw_json)).into_response(),
+                Err(e) => {
+                    return (
+                        axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                        format!(
+                            "Failed to parse token. Error: {}. Raw JSON: {}",
+                            e, raw_json
+                        ),
+                    )
+                        .into_response();
+                }
             }
-        },
-        Err(e) => return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to exchange code: {}", e)).into_response(),
+        }
+        Err(e) => {
+            return (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to exchange code: {}", e),
+            )
+                .into_response();
+        }
     };
 
     // 2. Fetch user profile
-    let user_res = client.get("https://discord.com/api/users/@me")
+    let user_res = client
+        .get("https://discord.com/api/users/@me")
         .bearer_auth(token_res.access_token)
         .send()
         .await;
@@ -137,9 +163,21 @@ pub async fn callback(
     let discord_user = match user_res {
         Ok(r) => match r.json::<DiscordUser>().await {
             Ok(u) => u,
-            Err(e) => return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to parse user: {}", e)).into_response(),
+            Err(e) => {
+                return (
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to parse user: {}", e),
+                )
+                    .into_response();
+            }
         },
-        Err(e) => return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to fetch user: {}", e)).into_response(),
+        Err(e) => {
+            return (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to fetch user: {}", e),
+            )
+                .into_response();
+        }
     };
 
     // 3. Upsert user and create session
@@ -162,9 +200,14 @@ pub async fn callback(
             users::username.eq(&new_user.username),
             users::avatar.eq(&new_user.avatar),
         ))
-        .execute(&mut conn) {
-            return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, format!("DB error user: {}", e)).into_response();
-        }
+        .execute(&mut conn)
+    {
+        return (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            format!("DB error user: {}", e),
+        )
+            .into_response();
+    }
 
     let token: String = rand::thread_rng()
         .sample_iter(&Alphanumeric)
@@ -182,16 +225,23 @@ pub async fn callback(
 
     if let Err(e) = diesel::insert_into(sessions::table)
         .values(&new_session)
-        .execute(&mut conn) {
-            return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, format!("DB error session: {}", e)).into_response();
-        }
+        .execute(&mut conn)
+    {
+        return (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            format!("DB error session: {}", e),
+        )
+            .into_response();
+    }
 
     // 4. Set cookie and redirect to dashboard
     let cookie = Cookie::build(("session_id", token))
         .path("/")
         .http_only(true)
         .same_site(axum_extra::extract::cookie::SameSite::Lax)
-        .expires(time::OffsetDateTime::from_unix_timestamp(expires_at.and_utc().timestamp()).unwrap());
+        .expires(
+            time::OffsetDateTime::from_unix_timestamp(expires_at.and_utc().timestamp()).unwrap(),
+        );
 
     (jar.add(cookie), Redirect::to("/")).into_response()
 }
@@ -209,9 +259,7 @@ pub async fn logout(jar: CookieJar, State(state): State<Arc<ApiState>>) -> impl 
         }
     }
 
-    let mut cookie = Cookie::build(("session_id", ""))
-        .path("/")
-        .build();
+    let mut cookie = Cookie::build(("session_id", "")).path("/").build();
     cookie.make_removal();
 
     (jar.add(cookie), Json(serde_json::json!({"success": true})))
@@ -263,9 +311,14 @@ pub async fn link_rustplus(
             user_rustplus_credentials::expo_push_token.eq(&new_cred.expo_push_token),
             user_rustplus_credentials::rustplus_auth_token.eq(&new_cred.rustplus_auth_token),
         ))
-        .execute(&mut conn) {
-            return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, format!("DB error: {}", e)).into_response();
-        }
+        .execute(&mut conn)
+    {
+        return (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            format!("DB error: {}", e),
+        )
+            .into_response();
+    }
 
     Json(serde_json::json!({"success": true})).into_response()
 }

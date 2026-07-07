@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use rand::seq::SliceRandom;
-use reqwest::Client;
 use reqwest::header::{ACCEPT, ACCEPT_LANGUAGE, CACHE_CONTROL, PRAGMA, USER_AGENT};
-use tokio::time::{Duration, sleep};
+use reqwest::Client;
+use tokio::time::{sleep, Duration};
 use tracing::warn;
 
 const USER_AGENTS: &[&str] = &[

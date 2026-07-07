@@ -1,6 +1,6 @@
+use crate::{Context, Error};
 use db::models::ServerChannel;
 use db::schema::server_channels::dsl as sc_dsl;
-use crate::{Context, Error};
 use diesel::prelude::*;
 use poise::futures_util::StreamExt;
 use poise::serenity_prelude as serenity;

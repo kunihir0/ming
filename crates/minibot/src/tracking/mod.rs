@@ -1,9 +1,9 @@
-pub mod steam;
-pub mod battlemetrics;
-pub mod atlas;
 pub mod analytics;
-pub mod watchdog;
-pub mod dashboard;
+pub mod atlas;
+pub mod battlemetrics;
 pub mod commands;
-pub mod tts;
+pub mod dashboard;
 pub mod hours_cmd;
+pub mod steam;
+pub mod tts;
+pub mod watchdog;

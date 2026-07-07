@@ -5,15 +5,19 @@ use diesel::connection::SimpleConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
 use diesel::sqlite::SqliteConnection;
-use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
 
 pub type DbPool = Pool<ConnectionManager<SqliteConnection>>;
 
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
 
+/// Run migrations on the database.
+///
+/// # Errors
+/// Returns an error if migrations fail to run.
 pub fn run_migrations(conn: &mut SqliteConnection) -> anyhow::Result<()> {
     conn.run_pending_migrations(MIGRATIONS)
-        .map_err(|e| anyhow::anyhow!("Migration error: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("Migration error: {e}"))?;
     Ok(())
 }
 
@@ -50,28 +54,37 @@ pub fn establish_connection_pool(database_url: &str) -> DbPool {
         .expect("Failed to create database pool.")
 }
 
-pub fn upsert_player_link(conn: &mut SqliteConnection, steam_id: &str, bm_id: &str) -> QueryResult<usize> {
+/// Upsert a player link mapping between `steam_id` and `bm_id`.
+///
+/// # Errors
+/// Returns an error if the database query fails.
+pub fn upsert_player_link(
+    conn: &mut SqliteConnection,
+    steam_id: &str,
+    bm_id: &str,
+) -> QueryResult<usize> {
     use crate::schema::player_links::dsl as pl;
     use chrono::Utc;
 
     let now = Utc::now().naive_utc();
-    let new_link = models::NewPlayerLink {
-        steam_id,
-        bm_id,
-    };
+    let new_link = models::NewPlayerLink { steam_id, bm_id };
 
     diesel::insert_into(pl::player_links)
         .values(&new_link)
         .on_conflict(pl::steam_id)
         .do_update()
-        .set((
-            pl::bm_id.eq(bm_id),
-            pl::updated_at.eq(now)
-        ))
+        .set((pl::bm_id.eq(bm_id), pl::updated_at.eq(now)))
         .execute(conn)
 }
 
-pub fn get_bm_id_for_steam_id(conn: &mut SqliteConnection, steam_id_val: &str) -> QueryResult<Option<String>> {
+/// Get the `BattleMetrics` ID for a given Steam ID.
+///
+/// # Errors
+/// Returns an error if the database query fails.
+pub fn get_bm_id_for_steam_id(
+    conn: &mut SqliteConnection,
+    steam_id_val: &str,
+) -> QueryResult<Option<String>> {
     use crate::schema::player_links::dsl as pl;
 
     pl::player_links

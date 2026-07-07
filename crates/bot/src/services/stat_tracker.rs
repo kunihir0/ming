@@ -5,7 +5,7 @@ use rustplus::proto::AppMarker;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{Mutex, broadcast};
-use tracing::{info, error};
+use tracing::{error, info};
 
 pub struct StatTracker {
     server_id: i32,
@@ -47,7 +47,7 @@ impl StatTracker {
             if marker.r#type() != rustplus::proto::AppMarkerType::Player {
                 continue;
             }
-            
+
             let steam_id = marker.steam_id.unwrap_or_default().to_string();
             if steam_id == "0" || steam_id.is_empty() {
                 continue;
@@ -74,8 +74,11 @@ impl StatTracker {
                     continue;
                 }
 
-                if dist < 1.0 { // Hasn't moved
-                    if !state.is_afk && state.last_moved.elapsed() > std::time::Duration::from_secs(300) {
+                if dist < 1.0 {
+                    // Hasn't moved
+                    if !state.is_afk
+                        && state.last_moved.elapsed() > std::time::Duration::from_secs(300)
+                    {
                         state.is_afk = true;
                         self.log_event(&steam_id, "AfkStart", current_pos.0, current_pos.1);
                     }
@@ -89,12 +92,15 @@ impl StatTracker {
                     }
                 }
             } else {
-                states.insert(steam_id.clone(), PlayerState {
-                    x: current_pos.0,
-                    y: current_pos.1,
-                    last_moved: std::time::Instant::now(),
-                    is_afk: false,
-                });
+                states.insert(
+                    steam_id.clone(),
+                    PlayerState {
+                        x: current_pos.0,
+                        y: current_pos.1,
+                        last_moved: std::time::Instant::now(),
+                        is_afk: false,
+                    },
+                );
                 self.log_event(&steam_id, "Online", current_pos.0, current_pos.1);
             }
         }
@@ -123,7 +129,10 @@ impl StatTracker {
         {
             error!("Failed to insert player stat: {}", e);
         } else {
-            info!("Logged stat for {}: {} at {:.0}, {:.0}", steam_id, event, x, y);
+            info!(
+                "Logged stat for {}: {} at {:.0}, {:.0}",
+                steam_id, event, x, y
+            );
         }
     }
 }

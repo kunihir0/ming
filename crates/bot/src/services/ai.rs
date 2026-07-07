@@ -34,9 +34,17 @@ struct GeminiContent {
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(untagged)]
 enum GeminiPart {
-    Text { text: String },
-    FunctionCall { #[serde(rename = "functionCall")] function_call: FunctionCall },
-    FunctionResponse { #[serde(rename = "functionResponse")] function_response: FunctionResponse },
+    Text {
+        text: String,
+    },
+    FunctionCall {
+        #[serde(rename = "functionCall")]
+        function_call: FunctionCall,
+    },
+    FunctionResponse {
+        #[serde(rename = "functionResponse")]
+        function_response: FunctionResponse,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -99,7 +107,12 @@ struct Candidate {
     content: Option<GeminiContent>,
 }
 
-pub async fn find_best_deals(server_id: i32, map_size: u32, vending_machines: &[AppMarker], query: Option<String>) -> Result<String> {
+pub async fn find_best_deals(
+    server_id: i32,
+    map_size: u32,
+    vending_machines: &[AppMarker],
+    query: Option<String>,
+) -> Result<String> {
     let cache_key = (server_id, query.clone());
     if let Some(cached) = AI_CACHE.get(&cache_key).await {
         return Ok(cached);
@@ -123,7 +136,7 @@ pub async fn find_best_deals(server_id: i32, map_size: u32, vending_machines: &[
             "Analyze these Rust vending machine deals based on standard economics (sulfur/scrap > wood/stone). \
             Find the 5 absolute BEST deals for value. \
             Be minimal and straightforward. Do not use emojis.\n\n\
-            Inventory:\n\n"
+            Inventory:\n\n",
         )
     };
 
@@ -135,7 +148,7 @@ pub async fn find_best_deals(server_id: i32, map_size: u32, vending_machines: &[
 
         let grid = get_grid_pos(marker.x, marker.y, map_size);
         let name = marker.name.as_deref().unwrap_or("Vending Machine");
-        
+
         // Filter by query if provided (checking grid or name)
         if let Some(ref q) = query {
             let q_lower = q.to_lowercase();
@@ -143,10 +156,10 @@ pub async fn find_best_deals(server_id: i32, map_size: u32, vending_machines: &[
                 continue;
             }
         }
-        
+
         let mut has_stock = false;
         let mut machine_text = format!("**{name}** at {grid}:\n");
-        
+
         for order in &marker.sell_orders {
             if order.amount_in_stock > 0 {
                 has_stock = true;
@@ -154,12 +167,16 @@ pub async fn find_best_deals(server_id: i32, map_size: u32, vending_machines: &[
                 let currency_name = get_item_name(order.currency_id);
                 machine_text.push_str(&format!(
                     " - Sells {}x {} for {}x {} (Stock: {})\n",
-                    order.quantity, item_name, order.cost_per_item, currency_name, order.amount_in_stock
+                    order.quantity,
+                    item_name,
+                    order.cost_per_item,
+                    currency_name,
+                    order.amount_in_stock
                 ));
                 item_count += 1;
             }
         }
-        
+
         if has_stock {
             prompt.push_str(&machine_text);
             prompt.push('\n');
@@ -225,7 +242,12 @@ pub async fn find_best_deals(server_id: i32, map_size: u32, vending_machines: &[
     Ok(text)
 }
 
-pub async fn chat_with_tools(server_id: i32, user_message: &str, map_size: u32, vending_machines: &[AppMarker]) -> Result<String> {
+pub async fn chat_with_tools(
+    server_id: i32,
+    user_message: &str,
+    map_size: u32,
+    vending_machines: &[AppMarker],
+) -> Result<String> {
     let api_key = std::env::var("GEMINI_API_KEY").unwrap_or_default();
     if api_key.is_empty() || api_key == "your_gemini_api_key_here" {
         anyhow::bail!("GEMINI_API_KEY is not configured.");
@@ -299,12 +321,17 @@ pub async fn chat_with_tools(server_id: i32, user_message: &str, map_size: u32, 
         if let GeminiPart::FunctionCall { function_call } = part {
             if function_call.name == "get_vending_deals" {
                 // Execute the tool
-                let query = function_call.args.get("query").and_then(|v| v.as_str()).map(String::from);
-                
-                let tool_result = match find_best_deals(server_id, map_size, vending_machines, query).await {
-                    Ok(deals) => deals,
-                    Err(e) => format!("Error fetching deals: {}", e),
-                };
+                let query = function_call
+                    .args
+                    .get("query")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+
+                let tool_result =
+                    match find_best_deals(server_id, map_size, vending_machines, query).await {
+                        Ok(deals) => deals,
+                        Err(e) => format!("Error fetching deals: {}", e),
+                    };
 
                 // Add the model's function call response to the history
                 request_body.contents.push(candidate_content.clone());
