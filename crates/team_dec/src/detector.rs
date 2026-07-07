@@ -7,6 +7,23 @@ use crate::services::battlemetrics::BattleMetricsService;
 use crate::services::steam::SteamService;
 use crate::services::steamid_com::SteamIdDotComService;
 
+pub struct ProgressEvent {
+    pub profiles_searched: u32,
+    pub max_profiles: u32,
+    pub current_profile: String,
+    pub queue_length: usize,
+    pub next_in_queue: Option<String>,
+    pub current_service: String,
+    pub current_action: String,
+    pub confident_connections: u32,
+    pub potential_connections: u32,
+    pub current_depth: u32,
+    pub max_depth: u32,
+    pub elapsed_secs: u64,
+    pub total_edges: usize,
+    pub hidden_profiles_found: u32,
+}
+
 #[derive(Debug, Clone)]
 pub struct TeamDetectorConfig {
     pub debug: bool,
@@ -104,6 +121,7 @@ impl TeamDetector {
         &self,
         server_id: &str,
         seed_steam_ids: Vec<String>,
+        progress_tx: Option<tokio::sync::mpsc::Sender<ProgressEvent>>,
     ) -> Result<(Vec<Player>, GraphData)> {
         if self.config.debug {
             tracing::info!(
@@ -112,6 +130,9 @@ impl TeamDetector {
                 "Starting team detection"
             );
         }
+
+        let start_time = tokio::time::Instant::now();
+        let mut hidden_profiles_found = 0;
 
         let bm_players = self.bm.get_players(server_id).await.unwrap_or_default();
         let mut found_players = Vec::new();
@@ -154,6 +175,34 @@ impl TeamDetector {
             profiles_searched += 1;
             searched_steam_ids.insert(profile_steam_id.clone());
 
+            let next_in_queue = queue.front().map(|(id, _)| id.clone());
+            let confident = nodes.values().filter(|n| n.is_on_server == Some(true)).count() as u32;
+            let potential = nodes.values().filter(|n| n.is_on_server != Some(true)).count() as u32;
+
+            // We must macro the send_progress so it can borrow the dynamically updated variables
+            macro_rules! send_progress {
+                ($service:expr, $action:expr) => {
+                    if let Some(tx) = &progress_tx {
+                        let _ = tx.try_send(ProgressEvent {
+                            profiles_searched,
+                            max_profiles: self.config.max_profiles,
+                            current_profile: profile_steam_id.clone(),
+                            queue_length: queue.len(),
+                            next_in_queue: next_in_queue.clone(),
+                            current_service: $service.to_string(),
+                            current_action: $action.to_string(),
+                            confident_connections: confident,
+                            potential_connections: potential,
+                            current_depth,
+                            max_depth: self.config.recursive_depth,
+                            elapsed_secs: start_time.elapsed().as_secs(),
+                            total_edges: edges.len(),
+                            hidden_profiles_found,
+                        });
+                    }
+                };
+            }
+
             tracing::info!(
                 "[{}/{}] Searching profile: {} (depth {})",
                 profiles_searched,
@@ -162,6 +211,7 @@ impl TeamDetector {
                 current_depth
             );
 
+            send_progress!("Steam API", "Fetching Profile Name");
             let profile_name = match self.steam.get_profile_name(&profile_steam_id).await {
                 Ok(name) => name,
                 Err(e) => {
@@ -170,12 +220,14 @@ impl TeamDetector {
                 }
             };
 
+            send_progress!("Steam API", "Fetching Custom ID");
             let profile_custom_id = self
                 .steam
                 .get_custom_id_by_steam_id(&profile_steam_id)
                 .await
                 .ok();
 
+            send_progress!("Steam API", "Fetching Profile Status");
             let profile_status = match self.steam.get_profile_status(&profile_steam_id).await {
                 Ok(status) => status,
                 Err(e) => {
@@ -216,14 +268,17 @@ impl TeamDetector {
             let mut people = Vec::new();
 
             // 1. Steam Friends
+            send_progress!("Steam API", "Fetching Friends List");
             if let Ok(friends) = self.steam.get_friends(&profile_steam_id).await {
                 people.extend(friends);
             }
 
             // 2. Hidden Friends via steamid.com
+            send_progress!("SteamId.com", "Fetching Hidden Friends");
             if let Ok(hidden_friends) = self.steamid_com.get_friends(&profile_steam_id).await {
                 for hf in hidden_friends {
                     if hf.depth == 1 {
+                        hidden_profiles_found += 1;
                         people.push(Player {
                             steam_id: Some(hf.steam_id64),
                             custom_id: None,
@@ -238,6 +293,7 @@ impl TeamDetector {
 
             // 3. Comments (Optional)
             if self.config.search_comments && self.config.search_comments_max_pages > 0 {
+                send_progress!("Steam API", "Fetching Profile Comments");
                 if let Ok(num_comments) = self.steam.get_number_of_comments(&profile_steam_id).await
                 {
                     let mut remaining_comments = num_comments;
@@ -258,6 +314,7 @@ impl TeamDetector {
             }
 
             // Deduplicate
+            send_progress!("Internal", "Deduplicating Contacts");
             people = Self::remove_duplicates(people);
             people.retain(|p| p.steam_id.as_ref() != Some(&profile_steam_id));
             if let Some(ref pc) = profile_custom_id {

@@ -30,3 +30,4 @@ songbird = "0.6.0"
 symphonia = { version = "0.5", features = ["mp3"] }
 plotters = "0.3"
 image = "0.25.10"
+self_update.workspace = true

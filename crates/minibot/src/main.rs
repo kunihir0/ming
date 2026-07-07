@@ -7,11 +7,13 @@ mod listener;
 pub mod team;
 pub mod tracking;
 pub mod vending;
+mod update;
 
 use crate::connection_manager::ConnectionManager;
 use crate::framework::{CommandRegistry, MinibotData, ReplyTarget, UnifiedContext};
 use crate::team::team;
 use crate::tracking::commands::{find, track, TrackCommand};
+use crate::update::update_bot;
 use crate::tracking::hours_cmd::hours;
 use crate::vending::{
     VendingDumpCommand, VendingListCommand, VendingSearchCommand, VendingSubsCommand,
@@ -54,7 +56,7 @@ async fn v(_ctx: PoiseContext<'_>) -> Result<(), Error> {
 /// Show the bot's help menu
 #[poise::command(slash_command, category = "Settings")]
 async fn help(ctx: PoiseContext<'_>) -> Result<(), Error> {
-    let mut help_text = String::from("```asciidoc\n= Minibot Command Reference =\n");
+    let mut help_text = format!("```asciidoc\n= Minibot v{} Command Reference =\n", env!("CARGO_PKG_VERSION"));
 
     let commands = &ctx.framework().options().commands;
     let mut categories: std::collections::BTreeMap<&str, Vec<_>> =
@@ -639,6 +641,7 @@ async fn main() -> anyhow::Result<()> {
                 help(),
                 team(),
                 hours(),
+                update_bot(),
             ],
             event_handler: |ctx, event, _framework, data| {
                 Box::pin(async move {

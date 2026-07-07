@@ -22,6 +22,7 @@ project/
 - Zero `unwrap()` in library code. Zero.
 - Every public item in a library crate has a `///` doc comment.
 - `Cargo.lock` is committed — this is an application workspace.
+- Prefer ? or let-else to handle errors as data, reserving unwrap() only for tests, and unwrap_or_else() only for inline defaults.
 
 ## Workspace Dependencies
 
