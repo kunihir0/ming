@@ -27,6 +27,7 @@ pub async fn update_bot(ctx: PoiseContext<'_>) -> Result<(), Error> {
         .repo_name(&repo_name)
         .bin_name("minibot-x86_64-linux-gnu") // The asset name attached to the release
         .show_download_progress(false)
+        .no_confirm(true)
         .current_version(env!("CARGO_PKG_VERSION"));
 
     // If a private repo, we need a token
