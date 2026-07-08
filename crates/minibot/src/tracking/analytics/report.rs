@@ -1,6 +1,6 @@
 use anyhow::Result;
-use chrono::{Datelike, Duration, Timelike, Utc};
-use db::models::{PlayerSession, TrackedPlayer};
+use chrono::{Duration, Timelike, Utc};
+use db::models::PlayerSession;
 use db::schema::player_sessions::dsl::*;
 use db::DbPool;
 use diesel::prelude::*;

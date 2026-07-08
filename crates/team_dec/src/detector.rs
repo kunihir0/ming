@@ -64,6 +64,11 @@ impl TeamDetectorBuilder {
         self
     }
 
+    pub fn search_comments(mut self, search: bool) -> Self {
+        self.config.search_comments = search;
+        self
+    }
+
     pub fn recursive_depth(mut self, depth: u32) -> Self {
         self.config.recursive_depth = depth.clamp(1, 10);
         self
@@ -122,6 +127,7 @@ impl TeamDetector {
         server_id: &str,
         seed_steam_ids: Vec<String>,
         progress_tx: Option<tokio::sync::mpsc::Sender<ProgressEvent>>,
+        cancel_token: Option<Arc<std::sync::atomic::AtomicBool>>,
     ) -> Result<(Vec<Player>, GraphData)> {
         if self.config.debug {
             tracing::info!(
@@ -150,6 +156,13 @@ impl TeamDetector {
         }
 
         while let Some((profile_steam_id, current_depth)) = queue.pop_front() {
+            if let Some(token) = &cancel_token {
+                if token.load(std::sync::atomic::Ordering::Relaxed) {
+                    tracing::info!("Team detection was cancelled by user.");
+                    break;
+                }
+            }
+
             if self.config.ignore_list.contains(&profile_steam_id) {
                 if self.config.debug {
                     tracing::debug!(profile_steam_id = %profile_steam_id, "Skipping ignored");
@@ -176,8 +189,14 @@ impl TeamDetector {
             searched_steam_ids.insert(profile_steam_id.clone());
 
             let next_in_queue = queue.front().map(|(id, _)| id.clone());
-            let confident = nodes.values().filter(|n| n.is_on_server == Some(true)).count() as u32;
-            let potential = nodes.values().filter(|n| n.is_on_server != Some(true)).count() as u32;
+            let confident = nodes
+                .values()
+                .filter(|n| n.is_on_server == Some(true))
+                .count() as u32;
+            let potential = nodes
+                .values()
+                .filter(|n| n.is_on_server != Some(true))
+                .count() as u32;
 
             // We must macro the send_progress so it can borrow the dynamically updated variables
             macro_rules! send_progress {

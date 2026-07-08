@@ -1,8 +1,8 @@
-use std::sync::LazyLock;
 use reqwest::Client;
 use scraper::{Html, Selector};
 use serde_json::Value;
 use std::sync::Arc;
+use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
@@ -84,7 +84,7 @@ impl SteamIdDotComService {
             if arr.len() == 2 {
                 let type_tag = &arr[0];
                 let inner_val = &arr[1];
-                
+
                 if let Value::Number(tag_num) = type_tag {
                     if let Some(tag) = tag_num.as_u64() {
                         match tag {
@@ -199,8 +199,18 @@ impl SteamIdDotComService {
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string(),
-                    depth: u32::try_from(f.get("depth").and_then(serde_json::Value::as_u64).unwrap_or(0)).unwrap_or(0),
-                    friend_of: u32::try_from(f.get("friend_of").and_then(serde_json::Value::as_u64).unwrap_or(0)).unwrap_or(0),
+                    depth: u32::try_from(
+                        f.get("depth")
+                            .and_then(serde_json::Value::as_u64)
+                            .unwrap_or(0),
+                    )
+                    .unwrap_or(0),
+                    friend_of: u32::try_from(
+                        f.get("friend_of")
+                            .and_then(serde_json::Value::as_u64)
+                            .unwrap_or(0),
+                    )
+                    .unwrap_or(0),
                     bans: BansInfo {
                         community_banned: f
                             .get("community_banned")

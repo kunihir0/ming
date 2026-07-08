@@ -1,8 +1,8 @@
-use std::sync::LazyLock;
 use reqwest::Client;
 use scraper::{Html, Selector};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
@@ -15,8 +15,9 @@ static CUSTOM_ID_REGEX: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(r#"g_rgProfileData = \{"url":"https://steamcommunity\.com/id/(.*?)/""#)
         .unwrap()
 });
-static COMMENTS_REGEX: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r#"InitializeCommentThread\(.*"total_count":(\d+),"#).unwrap());
+static COMMENTS_REGEX: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r#"InitializeCommentThread\(.*"total_count":(\d+),"#).unwrap()
+});
 static FRIEND_HREF_REGEX: LazyLock<regex::Regex> =
     LazyLock::new(|| regex::Regex::new(r#"id/(.*?)(/|$)"#).unwrap());
 static COMMENT_STEAM_ID_REGEX: LazyLock<regex::Regex> =
@@ -28,8 +29,9 @@ static SELECTOR_IN_GAME_NAME: LazyLock<Selector> =
     LazyLock::new(|| Selector::parse(".profile_in_game_name").unwrap());
 static SELECTOR_IN_GAME_HEADER: LazyLock<Selector> =
     LazyLock::new(|| Selector::parse(".profile_in_game_header").unwrap());
-static SELECTOR_COMMENT_SPAN: LazyLock<Selector> =
-    LazyLock::new(|| Selector::parse("span[id^='commentthread_profile_'][id$='_totalcount']").unwrap());
+static SELECTOR_COMMENT_SPAN: LazyLock<Selector> = LazyLock::new(|| {
+    Selector::parse("span[id^='commentthread_profile_'][id$='_totalcount']").unwrap()
+});
 static SELECTOR_FRIEND_BLOCK: LazyLock<Selector> =
     LazyLock::new(|| Selector::parse(".friend_block_v2").unwrap());
 static SELECTOR_FRIEND_LINK: LazyLock<Selector> =

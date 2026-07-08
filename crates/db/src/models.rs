@@ -22,7 +22,6 @@ pub struct NewPlayerLink<'a> {
     pub steam_id: &'a str,
     pub bm_id: &'a str,
 }
-use diesel::prelude::*;
 
 #[derive(Queryable, Selectable, Insertable, Identifiable, AsChangeset, Debug, Clone)]
 #[diesel(table_name = guild_configs)]

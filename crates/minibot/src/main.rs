@@ -6,15 +6,15 @@ mod items;
 mod listener;
 pub mod team;
 pub mod tracking;
-pub mod vending;
 mod update;
+pub mod vending;
 
 use crate::connection_manager::ConnectionManager;
 use crate::framework::{CommandRegistry, MinibotData, ReplyTarget, UnifiedContext};
 use crate::team::team;
 use crate::tracking::commands::{find, track, TrackCommand};
-use crate::update::update_bot;
 use crate::tracking::hours_cmd::hours;
+use crate::update::update_bot;
 use crate::vending::{
     VendingDumpCommand, VendingListCommand, VendingSearchCommand, VendingSubsCommand,
 };
@@ -56,7 +56,10 @@ async fn v(_ctx: PoiseContext<'_>) -> Result<(), Error> {
 /// Show the bot's help menu
 #[poise::command(slash_command, category = "Settings")]
 async fn help(ctx: PoiseContext<'_>) -> Result<(), Error> {
-    let mut help_text = format!("```asciidoc\n= Minibot v{} Command Reference =\n", env!("CARGO_PKG_VERSION"));
+    let mut help_text = format!(
+        "```asciidoc\n= Minibot v{} Command Reference =\n",
+        env!("CARGO_PKG_VERSION")
+    );
 
     let commands = &ctx.framework().options().commands;
     let mut categories: std::collections::BTreeMap<&str, Vec<_>> =
@@ -661,6 +664,18 @@ async fn main() -> anyhow::Result<()> {
                                 .await
                                 {
                                     tracing::error!("Dashboard component error: {}", e);
+                                }
+                            } else if custom_id.starts_with("cancel_team_") {
+                                if let Some(queue) = &data.team_queue {
+                                    if queue.cancel_current_job(component.user.id).await {
+                                        let _ = component.create_response(ctx, serenity::CreateInteractionResponse::Message(
+                                            serenity::CreateInteractionResponseMessage::new().content("Cancellation requested.").ephemeral(true)
+                                        )).await;
+                                    } else {
+                                        let _ = component.create_response(ctx, serenity::CreateInteractionResponse::Message(
+                                            serenity::CreateInteractionResponseMessage::new().content("You cannot cancel this job, or no job is running.").ephemeral(true)
+                                        )).await;
+                                    }
                                 }
                             }
                         } else if let poise::serenity_prelude::Interaction::Modal(modal) =
