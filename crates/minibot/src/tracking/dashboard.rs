@@ -45,10 +45,22 @@ pub async fn refresh_dashboard(
         .filter(players_dsl::server_id.eq(server_id_filter))
         .load::<db::models::TrackedPlayer>(&mut conn)?;
 
+    let paired_server = db::schema::paired_servers::dsl::paired_servers
+        .filter(db::schema::paired_servers::dsl::id.eq(server_id_filter))
+        .first::<db::models::PairedServer>(&mut conn)
+        .optional()?;
+
     let mut embed = serenity::CreateEmbed::new()
         .title("Player Tracking Dashboard")
         .color(0xCE422B)
-        .timestamp(chrono::Utc::now());
+        .timestamp(serenity::model::Timestamp::now());
+
+    if let Some(server) = paired_server {
+        embed = embed.footer(serenity::CreateEmbedFooter::new(format!(
+            "Server: {}",
+            server.name
+        )));
+    }
 
     let mut desc = String::new();
 

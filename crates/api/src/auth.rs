@@ -89,7 +89,7 @@ impl FromRef<Arc<ApiState>> for Arc<ApiState> {
 
 pub async fn login(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
     let url = format!(
-        "https://discord.com/api/oauth2/authorize?client_id={}&redirect_uri={}&response_type=code&scope=identify",
+        "https://discord.com/api/oauth2/authorize?client_id={}&redirect_uri={}&response_type=code&scope=identify+email+guilds+connections+guilds.members.read",
         state.oauth.client_id,
         urlencoding::encode(&state.oauth.redirect_uri)
     );

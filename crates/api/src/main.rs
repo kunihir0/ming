@@ -2,12 +2,13 @@
 use axum::{
     Json, Router,
     extract::{
-        Path, State, WebSocketUpgrade,
+        Path, State, WebSocketUpgrade, Query,
         ws::{Message, WebSocket},
     },
     response::IntoResponse,
     routing::{get, post},
 };
+use tower_http::services::ServeDir;
 use db::{
     DbPool, establish_connection_pool,
     models::{FcmCredential, PairedServer, PlayerStat},
@@ -76,6 +77,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/auth/me", get(auth::get_me))
         .route("/api/auth/logout", post(auth::logout))
         .route("/api/auth/rustplus/link", post(auth::link_rustplus))
+        .route("/api/market/ticker", get(get_ticker))
+        .route("/api/market/history", get(get_history))
         .route("/api/servers", get(list_servers))
         .route("/api/server/{id}/info", get(get_info))
         .route("/api/server/{id}/map", get(get_map))
@@ -128,14 +131,36 @@ async fn main() -> anyhow::Result<()> {
             get(camera_stream_raw),
         )
         .route("/api/server/{id}/ws", get(ws_handler))
+        .fallback_service(ServeDir::new(std::env::var("VENDING_MARKET_WEB_ROOT").unwrap_or_else(|_| "../web/dist".to_string())))
         .with_state(state);
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
-    info!("Starting API server on {}", addr);
+    let port: u16 = std::env::var("VENDING_MARKET_PORT")
+        .unwrap_or_else(|_| "8080".to_string())
+        .parse()
+        .unwrap_or(8080);
+
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    info!("Starting Unified API & Web server on {}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+#[derive(serde::Deserialize)]
+pub struct HistoryQuery {
+    item: String,
+}
+
+async fn get_ticker(State(_state): State<Arc<ApiState>>) -> Json<serde_json::Value> {
+    Json(serde_json::json!({ "status": "ok", "data": [] }))
+}
+
+async fn get_history(
+    State(_state): State<Arc<ApiState>>,
+    Query(query): Query<HistoryQuery>,
+) -> Json<serde_json::Value> {
+    Json(serde_json::json!({ "status": "ok", "item": query.item, "data": [] }))
 }
 
 async fn get_or_connect_client(

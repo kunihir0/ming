@@ -79,6 +79,7 @@ pub async fn handle_pairing_interaction(
                 player_token: req.player_token,
                 name: req.name.clone(),
                 auto_reconnect: 1,
+                bm_server_id: None,
             };
 
             diesel::insert_into(ps_dsl::paired_servers)

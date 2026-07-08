@@ -8,6 +8,7 @@ pub mod team;
 pub mod tracking;
 mod update;
 pub mod vending;
+pub mod market;
 
 use crate::connection_manager::ConnectionManager;
 use crate::framework::{CommandRegistry, MinibotData, ReplyTarget, UnifiedContext};
@@ -760,6 +761,11 @@ async fn main() -> anyhow::Result<()> {
                         vec![]
                     }
                 };
+
+                // Start vending market
+                if env::var("VENDING_MARKET_ENABLED").unwrap_or_else(|_| "true".to_string()) == "true" {
+                    crate::market::start_vending_monitor(db_pool.clone(), data.rustplus_clients.clone()).await;
+                }
 
                 Ok(data)
             })

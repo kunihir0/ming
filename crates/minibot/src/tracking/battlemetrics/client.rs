@@ -28,17 +28,7 @@ impl BmScraperClient {
         }
     }
 
-    fn extract_bootstrap_json(html: &str) -> Option<serde_json::Value> {
-        let start_marker = "id=\"storeBootstrap\" type=\"application/json\">";
-        if let Some(start_idx) = html.find(start_marker) {
-            let json_start = start_idx + start_marker.len();
-            if let Some(end_idx) = html[json_start..].find("</script>") {
-                let json_str = &html[json_start..json_start + end_idx];
-                return serde_json::from_str(json_str).ok();
-            }
-        }
-        None
-    }
+
 
     /// Fetches a server page via the public API and parses all players currently online.
     pub async fn scrape_server_players(&self, server_id: &str) -> Result<BmServerPlayerList> {

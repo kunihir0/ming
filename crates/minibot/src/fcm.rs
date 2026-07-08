@@ -168,6 +168,7 @@ async fn handle_fcm_notification(
             player_token: token,
             name: name.to_string(),
             auto_reconnect: 1,
+            bm_server_id: None,
         };
 
         diesel::insert_into(ps_dsl::paired_servers)

@@ -97,6 +97,7 @@ pub struct PairedServer {
     pub player_token: i32,
     pub name: String,
     pub auto_reconnect: i32,
+    pub bm_server_id: Option<String>,
 }
 
 #[derive(Insertable, Debug, Clone)]
@@ -108,6 +109,7 @@ pub struct NewPairedServer {
     pub player_token: i32,
     pub name: String,
     pub auto_reconnect: i32,
+    pub bm_server_id: Option<String>,
 }
 
 #[derive(
@@ -198,6 +200,38 @@ pub struct User {
     pub username: String,
     pub avatar: Option<String>,
     pub created_at: chrono::NaiveDateTime,
+}
+
+#[derive(Queryable, Selectable, Identifiable, Associations, Debug, Clone)]
+#[diesel(belongs_to(PairedServer, foreign_key = server_id))]
+#[diesel(table_name = crate::schema::vending_transactions)]
+pub struct VendingTransaction {
+    pub id: i32,
+    pub server_id: i32,
+    pub timestamp: i64,
+    pub item_id: i32,
+    pub item_name: String,
+    pub currency_id: i32,
+    pub currency_name: String,
+    pub quantity: i32,
+    pub cost_per_item: i32,
+    pub amount_in_stock: i32,
+    pub is_outlier: i32,
+}
+
+#[derive(Insertable, Debug, Clone)]
+#[diesel(table_name = crate::schema::vending_transactions)]
+pub struct NewVendingTransaction {
+    pub server_id: i32,
+    pub timestamp: i64,
+    pub item_id: i32,
+    pub item_name: String,
+    pub currency_id: i32,
+    pub currency_name: String,
+    pub quantity: i32,
+    pub cost_per_item: i32,
+    pub amount_in_stock: i32,
+    pub is_outlier: i32,
 }
 
 #[derive(Insertable, Debug, Clone)]

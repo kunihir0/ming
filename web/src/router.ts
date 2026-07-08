@@ -13,6 +13,11 @@ const routes = [
     name: 'LinkRustPlus',
     component: LinkRustPlus,
   },
+  {
+    path: '/market',
+    name: 'VendingMarket',
+    component: () => import('./views/VendingMarket.vue'),
+  },
 ]
 
 const router = createRouter({

@@ -25,8 +25,9 @@ CREATE TABLE paired_servers (
     server_port INTEGER NOT NULL,
     player_token INTEGER NOT NULL,
     name TEXT NOT NULL,
+    bm_server_id TEXT,
     UNIQUE(server_ip, server_port, player_token),
-    FOREIGN KEY (fcm_credential_id) REFERENCES fcm_credentials(id)
+    FOREIGN KEY (fcm_credential_id) REFERENCES fcm_credentials(id) ON DELETE CASCADE
 );
 
 CREATE TABLE server_channels (

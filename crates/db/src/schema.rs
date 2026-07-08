@@ -31,6 +31,22 @@ diesel::table! {
 }
 
 diesel::table! {
+    vending_transactions (id) {
+        id -> Integer,
+        server_id -> Integer,
+        timestamp -> BigInt,
+        item_id -> Integer,
+        item_name -> Text,
+        currency_id -> Integer,
+        currency_name -> Text,
+        quantity -> Integer,
+        cost_per_item -> Integer,
+        amount_in_stock -> Integer,
+        is_outlier -> Integer,
+    }
+}
+
+diesel::table! {
     guild_configs (guild_id) {
         guild_id -> Text,
         setup_mode -> Text,
@@ -53,6 +69,7 @@ diesel::table! {
         player_token -> Integer,
         name -> Text,
         auto_reconnect -> Integer,
+        bm_server_id -> Nullable<Text>,
     }
 }
 
@@ -219,6 +236,7 @@ diesel::table! {
 
 diesel::joinable!(player_sessions -> tracked_players (tracked_player_id));
 diesel::joinable!(player_sessions -> paired_servers (server_id));
+diesel::joinable!(vending_transactions -> paired_servers (server_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     fcm_credentials,
@@ -232,6 +250,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     user_rustplus_credentials,
     users,
     vending_subscriptions,
+    vending_transactions,
     player_name_history,
     track_groups,
     track_notifications_config,

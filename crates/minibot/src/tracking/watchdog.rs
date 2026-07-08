@@ -58,19 +58,23 @@ impl TrackerWatchdog {
         let mut servers_to_refresh = HashSet::new();
 
         for paired in all_paired_servers {
-            let bm_server_id = match self
-                .bm_client
-                .scrape_server_id_by_ip(&paired.server_ip)
-                .await
-            {
-                Ok(Some(s_id)) => s_id,
-                Ok(None) => {
-                    tracing::debug!("Could not find BM Server ID for IP {}", paired.server_ip);
-                    continue;
-                }
-                Err(e) => {
-                    tracing::error!("Error scraping server ID by IP: {}", e);
-                    continue;
+            let bm_server_id = if let Some(bm_id) = paired.bm_server_id {
+                bm_id
+            } else {
+                match self
+                    .bm_client
+                    .scrape_server_id_by_ip(&paired.server_ip)
+                    .await
+                {
+                    Ok(Some(s_id)) => s_id,
+                    Ok(None) => {
+                        tracing::debug!("Could not find BM Server ID for IP {}", paired.server_ip);
+                        continue;
+                    }
+                    Err(e) => {
+                        tracing::error!("Error scraping server ID by IP: {}", e);
+                        continue;
+                    }
                 }
             };
 
