@@ -46,6 +46,8 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter("api=debug,rustplus=debug,info")
         .init();
+        
+    let _ = rustls::crypto::ring::default_provider().install_default();
     let _ = dotenvy::dotenv();
 
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
