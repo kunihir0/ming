@@ -154,15 +154,83 @@ pub struct HistoryQuery {
     item: String,
 }
 
-async fn get_ticker(State(_state): State<Arc<ApiState>>) -> Json<serde_json::Value> {
-    Json(serde_json::json!({ "status": "ok", "data": [] }))
+async fn get_ticker(State(state): State<Arc<ApiState>>) -> Json<serde_json::Value> {
+    use diesel::prelude::*;
+
+    let mut conn = match state.db_pool.get() {
+        Ok(c) => c,
+        Err(_) => return Json(serde_json::json!({ "status": "error", "message": "db error" })),
+    };
+
+    #[derive(diesel::QueryableByName)]
+    struct TickerRow {
+        #[diesel(sql_type = diesel::sql_types::Integer)]
+        item_id: i32,
+        #[diesel(sql_type = diesel::sql_types::Text)]
+        item_name: String,
+        #[diesel(sql_type = diesel::sql_types::Integer)]
+        cost_per_item: i32,
+    }
+
+    let query_result = diesel::sql_query(
+        "SELECT item_id, item_name, cost_per_item, MAX(timestamp) as max_ts FROM vending_transactions GROUP BY item_id"
+    )
+    .load::<TickerRow>(&mut conn);
+
+    match query_result {
+        Ok(rows) => {
+            let data: Vec<_> = rows.into_iter().map(|r| {
+                serde_json::json!({
+                    "id": r.item_id.to_string(),
+                    "name": r.item_name,
+                    "price": r.cost_per_item
+                })
+            }).collect();
+            Json(serde_json::json!({ "status": "ok", "data": data }))
+        }
+        Err(e) => Json(serde_json::json!({ "status": "error", "message": e.to_string() }))
+    }
 }
 
 async fn get_history(
-    State(_state): State<Arc<ApiState>>,
+    State(state): State<Arc<ApiState>>,
     Query(query): Query<HistoryQuery>,
 ) -> Json<serde_json::Value> {
-    Json(serde_json::json!({ "status": "ok", "item": query.item, "data": [] }))
+    use diesel::prelude::*;
+
+    let mut conn = match state.db_pool.get() {
+        Ok(c) => c,
+        Err(_) => return Json(serde_json::json!({ "status": "error", "message": "db error" })),
+    };
+    
+    let item_id_parsed: i32 = query.item.parse().unwrap_or(0);
+
+    #[derive(diesel::QueryableByName)]
+    struct HistoryRow {
+        #[diesel(sql_type = diesel::sql_types::BigInt)]
+        timestamp: i64,
+        #[diesel(sql_type = diesel::sql_types::Integer)]
+        cost_per_item: i32,
+    }
+
+    let query_result = diesel::sql_query(
+        "SELECT timestamp, cost_per_item FROM vending_transactions WHERE item_id = ? ORDER BY timestamp ASC LIMIT 1000"
+    )
+    .bind::<diesel::sql_types::Integer, _>(item_id_parsed)
+    .load::<HistoryRow>(&mut conn);
+
+    match query_result {
+        Ok(rows) => {
+            let data: Vec<_> = rows.into_iter().map(|r| {
+                serde_json::json!({
+                    "time": r.timestamp,
+                    "price": r.cost_per_item
+                })
+            }).collect();
+            Json(serde_json::json!({ "status": "ok", "item": query.item, "data": data }))
+        }
+        Err(e) => Json(serde_json::json!({ "status": "error", "message": e.to_string() }))
+    }
 }
 
 async fn get_or_connect_client(
